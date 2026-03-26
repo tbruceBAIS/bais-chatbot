@@ -195,7 +195,7 @@ async function ensureKnowledgeBase() {
 }
 
 function getTopChunks(query, limit = 6) {
-  const scored = kbChunks
+  return kbChunks
     .map((chunk) => ({
       ...chunk,
       score: scoreChunk(query, chunk),
@@ -203,8 +203,6 @@ function getTopChunks(query, limit = 6) {
     .filter((chunk) => chunk.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
-
-  return scored;
 }
 
 // ===== EXPRESS =====
@@ -215,112 +213,203 @@ app.get("/", (_req, res) => {
   res.json({ ok: true, service: "BAIS chatbot" });
 });
 
-app.get("/widget", (req, res) => {
+app.get("/widget", (_req, res) => {
   res.send(`
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BAIS AI</title>
   <style>
-    body {
-      font-family: Arial;
-      background: #f5f7fa;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
+    * {
+      box-sizing: border-box;
     }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: transparent;
+    }
+
     .chat-container {
-      width: 400px;
-      height: 500px;
-      background: white;
-      border-radius: 12px;
+      width: 100%;
+      max-width: 380px;
+      height: 520px;
+      background: #ffffff;
+      border-radius: 14px;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.18);
       overflow: hidden;
+      border: 1px solid #e6e6e6;
     }
+
     .chat-header {
       background: #1c50af;
       color: white;
-      padding: 12px;
+      padding: 14px 16px;
       font-weight: bold;
+      font-size: 16px;
       text-align: center;
+      letter-spacing: 0.3px;
     }
+
     .chat-messages {
       flex: 1;
-      padding: 10px;
+      padding: 14px;
       overflow-y: auto;
+      background: #f7f9fc;
       font-size: 14px;
     }
+
     .msg {
+      max-width: 78%;
+      padding: 10px 12px;
+      border-radius: 12px;
       margin-bottom: 10px;
+      line-height: 1.45;
+      word-wrap: break-word;
+      white-space: pre-wrap;
     }
+
     .user {
-      text-align: right;
-      color: #1c50af;
+      background: #1c50af;
+      color: white;
+      margin-left: auto;
+      border-bottom-right-radius: 4px;
     }
+
     .bot {
-      text-align: left;
+      background: #e9edf5;
       color: #333;
+      margin-right: auto;
+      border-bottom-left-radius: 4px;
     }
+
     .chat-input {
       display: flex;
       border-top: 1px solid #ddd;
+      background: white;
     }
+
     .chat-input input {
       flex: 1;
-      padding: 10px;
+      padding: 12px;
       border: none;
       outline: none;
+      font-size: 14px;
     }
+
     .chat-input button {
       background: #1c50af;
       color: white;
       border: none;
-      padding: 10px 15px;
+      padding: 0 18px;
       cursor: pointer;
+      font-weight: bold;
+      min-width: 72px;
+    }
+
+    .chat-input button:hover {
+      background: #17428f;
+    }
+
+    .chat-input button:disabled {
+      background: #7d9ed8;
+      cursor: not-allowed;
+    }
+
+    .typing {
+      opacity: 0.8;
+      font-style: italic;
     }
   </style>
 </head>
 <body>
+  <div class="chat-container">
+    <div class="chat-header">BAIS AI Assistant</div>
 
-<div class="chat-container">
-  <div class="chat-header">BAIS AI Assistant</div>
-  <div class="chat-messages" id="messages"></div>
+    <div class="chat-messages" id="messages">
+      <div class="msg bot">Hi there — how can I help you today?</div>
+    </div>
 
-  <div class="chat-input">
-    <input id="input" placeholder="Ask something..." />
-    <button onclick="send()">Send</button>
+    <div class="chat-input">
+      <input id="input" placeholder="Ask about products, vendors, or services..." />
+      <button id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
   </div>
-</div>
 
-<script>
-async function send() {
-  const input = document.getElementById("input");
-  const messages = document.getElementById("messages");
+  <script>
+    const history = [];
 
-  const text = input.value.trim();
-  if (!text) return;
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
 
-  messages.innerHTML += '<div class="msg user">' + text + '</div>';
-  input.value = "";
+    function addMessage(text, type, extraClass = "") {
+      const messages = document.getElementById("messages");
+      const div = document.createElement("div");
+      div.className = "msg " + type + (extraClass ? " " + extraClass : "");
+      div.innerHTML = escapeHtml(text);
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+      return div;
+    }
 
-  const res = await fetch("/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ message: text })
-  });
+    async function sendMessage() {
+      const input = document.getElementById("input");
+      const sendBtn = document.getElementById("sendBtn");
+      const text = input.value.trim();
 
-  const data = await res.json();
+      if (!text) return;
 
-  messages.innerHTML += '<div class="msg bot">' + data.answer + '</div>';
-  messages.scrollTop = messages.scrollHeight;
-}
-</script>
+      addMessage(text, "user");
+      history.push({ role: "user", content: text });
 
+      input.value = "";
+      input.disabled = true;
+      sendBtn.disabled = true;
+
+      const typingMsg = addMessage("BAIS AI is typing...", "bot", "typing");
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            message: text,
+            history
+          })
+        });
+
+        const data = await res.json();
+        typingMsg.remove();
+
+        const answer = data.answer || "Sorry, I couldn't generate a response.";
+        addMessage(answer, "bot");
+        history.push({ role: "assistant", content: answer });
+      } catch (err) {
+        typingMsg.remove();
+        addMessage("Sorry, something went wrong. Please try again.", "bot");
+      } finally {
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    document.getElementById("input").addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        sendMessage();
+      }
+    });
+  </script>
 </body>
 </html>
   `);
@@ -368,7 +457,7 @@ H1: ${c.h1 || "N/A"}
 Content: ${c.text}
 `.trim()
           )
-          .join("\n\n")
+          .join("\\n\\n")
       : "No relevant website content was found.";
 
     const recentHistory = history.slice(-6).map((msg) => ({
@@ -427,7 +516,7 @@ ${websiteContext}
 });
 
 app.listen(port, async () => {
-  console.log(`Server running on port ${port}`);
+  console.log(\`Server running on port \${port}\`);
 
   try {
     await buildKnowledgeBase();
