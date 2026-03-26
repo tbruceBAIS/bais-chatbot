@@ -516,7 +516,14 @@ ${websiteContext}
 });
 
 app.listen(port, async () => {
-  console.log(\`Server running on port \${port}\`);
+  console.log(`Server running on port ${port}`);
+
+  try {
+    await buildKnowledgeBase();
+  } catch (err) {
+    console.error("Initial KB build failed:", err.message);
+  }
+});
 
   try {
     await buildKnowledgeBase();
