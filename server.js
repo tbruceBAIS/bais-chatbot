@@ -19,7 +19,7 @@ app.post("/chat", async (req, res) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "gpt-5.3",
+       model: "gpt-5.4",
         input: [
           {
             role: "system",
@@ -67,6 +67,8 @@ If asked those, respond with:
   }
 });
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
