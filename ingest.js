@@ -1,18 +1,19 @@
-// ingest.js
-require("dotenv").config();
+import "dotenv/config";
+import fs from "fs";
+import path from "path";
+import axios from "axios";
+import * as cheerio from "cheerio";
+import OpenAI from "openai";
+import { fileURLToPath } from "url";
 
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
-const cheerio = require("cheerio");
-const OpenAI = require("openai");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const BASE_URL = process.env.WEBSITE_BASE_URL || "https://blue-prod-01.bessig.com";
 const TMP_DIR = path.join(__dirname, "tmp-site-pages");
 
-// Add any important pages here as a fallback or starter set
 const FALLBACK_URLS = [
   `${BASE_URL}/`,
   `${BASE_URL}/content/page/aboutus`,
@@ -39,18 +40,18 @@ async function fetchSitemapUrls() {
       const res = await axios.get(sitemapUrl, { timeout: 15000 });
       const xml = res.data;
 
-      // lightweight XML extraction
-      const matches = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map(m => m[1].trim());
+      const matches = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((m) => m[1].trim());
 
-      const pageUrls = matches.filter(u =>
-        u.startsWith(BASE_URL) &&
-        !u.endsWith(".jpg") &&
-        !u.endsWith(".png") &&
-        !u.endsWith(".pdf") &&
-        !u.includes("/cart") &&
-        !u.includes("/checkout") &&
-        !u.includes("/account") &&
-        !u.includes("/search")
+      const pageUrls = matches.filter(
+        (u) =>
+          u.startsWith(BASE_URL) &&
+          !u.endsWith(".jpg") &&
+          !u.endsWith(".png") &&
+          !u.endsWith(".pdf") &&
+          !u.includes("/cart") &&
+          !u.includes("/checkout") &&
+          !u.includes("/account") &&
+          !u.includes("/search")
       );
 
       if (pageUrls.length) return [...new Set(pageUrls)];
@@ -82,7 +83,9 @@ function htmlToCleanText(html, url) {
     h1 ? `H1: ${h1}` : "",
     "",
     clean,
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function fetchPageText(url) {
@@ -97,7 +100,9 @@ async function fetchPageText(url) {
 }
 
 async function writePageFiles(urls) {
-  if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+  if (!fs.existsSync(TMP_DIR)) {
+    fs.mkdirSync(TMP_DIR, { recursive: true });
+  }
 
   const filepaths = [];
 
@@ -105,7 +110,6 @@ async function writePageFiles(urls) {
     try {
       const text = await fetchPageText(url);
 
-      // Skip thin pages
       if (!text || text.length < 300) continue;
 
       const filename = `${sanitizeFilename(url)}.md`;
@@ -173,7 +177,7 @@ async function waitForBatch(vectorStoreId, batchId) {
       throw new Error(`Batch ended with status: ${batch.status}`);
     }
 
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise((r) => setTimeout(r, 3000));
   }
 }
 
@@ -202,7 +206,7 @@ async function main() {
   console.log(`Use this in Render: OPENAI_VECTOR_STORE_ID=${vectorStoreId}`);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
