@@ -14,10 +14,9 @@ const client = new OpenAI({
 
 const BASE_URL = process.env.WEBSITE_BASE_URL || "https://blue-prod-01.bessig.com";
 
-// ===== SIMPLE WEBSITE KB CACHE =====
 let kbChunks = [];
 let kbLastBuiltAt = 0;
-const KB_TTL_MS = 1000 * 60 * 30; // 30 minutes
+const KB_TTL_MS = 1000 * 60 * 30;
 
 const FALLBACK_URLS = [
   `${BASE_URL}/`,
@@ -73,9 +72,9 @@ function scoreChunk(query, chunk) {
   }
 
   for (const word of qWords) {
-    if (chunk.title?.toLowerCase().includes(word)) score += 3;
-    if (chunk.h1?.toLowerCase().includes(word)) score += 4;
-    if (chunk.url?.toLowerCase().includes(word)) score += 2;
+    if (chunk.title && chunk.title.toLowerCase().includes(word)) score += 3;
+    if (chunk.h1 && chunk.h1.toLowerCase().includes(word)) score += 4;
+    if (chunk.url && chunk.url.toLowerCase().includes(word)) score += 2;
   }
 
   return score;
@@ -107,7 +106,7 @@ async function fetchSitemapUrls() {
       );
 
       if (urls.length) return [...new Set(urls)];
-    } catch {
+    } catch (_err) {
       // try next sitemap candidate
     }
   }
@@ -133,6 +132,7 @@ function htmlToStructuredContent(html, url) {
   ];
 
   let bodyText = "";
+
   for (const selector of preferredSelectors) {
     const text = normalizeText($(selector).first().text());
     if (text && text.length > bodyText.length) {
@@ -141,7 +141,6 @@ function htmlToStructuredContent(html, url) {
   }
 
   const finalText = sanitizeTextForModel(bodyText);
-
   return { url, title, h1, text: finalText };
 }
 
@@ -167,6 +166,7 @@ async function buildKnowledgeBase() {
       if (!page.text || page.text.length < 200) continue;
 
       const pieces = chunkText(page.text, 1400);
+
       for (const piece of pieces) {
         allChunks.push({
           url: page.url,
@@ -205,7 +205,6 @@ function getTopChunks(query, limit = 6) {
     .slice(0, limit);
 }
 
-// ===== EXPRESS =====
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
@@ -214,101 +213,114 @@ app.get("/", (_req, res) => {
 });
 
 app.get("/widget", (_req, res) => {
-  res.send(`
+  const html = `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BAIS AI</title>
   <style>
-    * {
-      box-sizing: border-box;
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      font-family: Arial, sans-serif;
     }
 
     body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: transparent;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
     }
 
     .chat-container {
       width: 100%;
-      max-width: 380px;
+      max-width: 390px;
       height: 520px;
       background: #ffffff;
+      border: 1px solid #dfe5ef;
       border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.16);
       display: flex;
       flex-direction: column;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.18);
-      overflow: hidden;
-      border: 1px solid #e6e6e6;
     }
 
     .chat-header {
       background: #1c50af;
-      color: white;
+      color: #fff;
       padding: 14px 16px;
-      font-weight: bold;
-      font-size: 16px;
       text-align: center;
-      letter-spacing: 0.3px;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: 0.2px;
     }
 
     .chat-messages {
       flex: 1;
       padding: 14px;
       overflow-y: auto;
-      background: #f7f9fc;
-      font-size: 14px;
+      background: #f6f8fc;
     }
 
     .msg {
       max-width: 78%;
+      margin-bottom: 12px;
       padding: 10px 12px;
-      border-radius: 12px;
-      margin-bottom: 10px;
+      border-radius: 14px;
       line-height: 1.45;
-      word-wrap: break-word;
+      font-size: 14px;
+      word-break: break-word;
       white-space: pre-wrap;
     }
 
-    .user {
-      background: #1c50af;
-      color: white;
-      margin-left: auto;
-      border-bottom-right-radius: 4px;
-    }
-
-    .bot {
-      background: #e9edf5;
-      color: #333;
+    .msg.bot {
+      background: #e9eef7;
+      color: #1f2937;
       margin-right: auto;
       border-bottom-left-radius: 4px;
     }
 
+    .msg.user {
+      background: #1c50af;
+      color: #ffffff;
+      margin-left: auto;
+      border-bottom-right-radius: 4px;
+    }
+
+    .typing {
+      opacity: 0.8;
+      font-style: italic;
+    }
+
     .chat-input {
       display: flex;
-      border-top: 1px solid #ddd;
-      background: white;
+      align-items: center;
+      gap: 0;
+      border-top: 1px solid #dfe5ef;
+      background: #fff;
     }
 
     .chat-input input {
       flex: 1;
-      padding: 12px;
-      border: none;
+      border: 0;
       outline: none;
+      padding: 13px 14px;
       font-size: 14px;
+      background: #fff;
     }
 
     .chat-input button {
+      border: 0;
       background: #1c50af;
-      color: white;
-      border: none;
-      padding: 0 18px;
+      color: #fff;
+      font-weight: 700;
       cursor: pointer;
-      font-weight: bold;
       min-width: 72px;
+      height: 46px;
     }
 
     .chat-input button:hover {
@@ -316,13 +328,8 @@ app.get("/widget", (_req, res) => {
     }
 
     .chat-input button:disabled {
-      background: #7d9ed8;
+      background: #89a7dd;
       cursor: not-allowed;
-    }
-
-    .typing {
-      opacity: 0.8;
-      font-style: italic;
     }
   </style>
 </head>
@@ -335,46 +342,45 @@ app.get("/widget", (_req, res) => {
     </div>
 
     <div class="chat-input">
-      <input id="input" placeholder="Ask about products, vendors, or services..." />
-      <button id="sendBtn" onclick="sendMessage()">Send</button>
+      <input id="input" type="text" placeholder="Ask about products, vendors, or services..." />
+      <button id="sendBtn" type="button">Send</button>
     </div>
   </div>
 
   <script>
     const history = [];
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("input");
+    const sendBtnEl = document.getElementById("sendBtn");
 
     function escapeHtml(str) {
-      return str
+      return String(str)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
     }
 
-    function addMessage(text, type, extraClass = "") {
-      const messages = document.getElementById("messages");
+    function addMessage(text, role, extraClass) {
       const div = document.createElement("div");
-      div.className = "msg " + type + (extraClass ? " " + extraClass : "");
+      div.className = "msg " + role + (extraClass ? " " + extraClass : "");
       div.innerHTML = escapeHtml(text);
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
       return div;
     }
 
     async function sendMessage() {
-      const input = document.getElementById("input");
-      const sendBtn = document.getElementById("sendBtn");
-      const text = input.value.trim();
-
+      const text = inputEl.value.trim();
       if (!text) return;
 
       addMessage(text, "user");
       history.push({ role: "user", content: text });
 
-      input.value = "";
-      input.disabled = true;
-      sendBtn.disabled = true;
+      inputEl.value = "";
+      inputEl.disabled = true;
+      sendBtnEl.disabled = true;
 
-      const typingMsg = addMessage("BAIS AI is typing...", "bot", "typing");
+      const typingEl = addMessage("BAIS AI is typing...", "bot", "typing");
 
       try {
         const res = await fetch("/chat", {
@@ -384,27 +390,32 @@ app.get("/widget", (_req, res) => {
           },
           body: JSON.stringify({
             message: text,
-            history
+            history: history
           })
         });
 
         const data = await res.json();
-        typingMsg.remove();
+        typingEl.remove();
 
-        const answer = data.answer || "Sorry, I couldn't generate a response.";
+        const answer = data && data.answer
+          ? data.answer
+          : "Sorry, I couldn't generate a response.";
+
         addMessage(answer, "bot");
         history.push({ role: "assistant", content: answer });
-      } catch (err) {
-        typingMsg.remove();
+      } catch (_err) {
+        typingEl.remove();
         addMessage("Sorry, something went wrong. Please try again.", "bot");
       } finally {
-        input.disabled = false;
-        sendBtn.disabled = false;
-        input.focus();
+        inputEl.disabled = false;
+        sendBtnEl.disabled = false;
+        inputEl.focus();
       }
     }
 
-    document.getElementById("input").addEventListener("keydown", function(event) {
+    sendBtnEl.addEventListener("click", sendMessage);
+
+    inputEl.addEventListener("keydown", function(event) {
       if (event.key === "Enter") {
         sendMessage();
       }
@@ -412,7 +423,9 @@ app.get("/widget", (_req, res) => {
   </script>
 </body>
 </html>
-  `);
+  `;
+
+  res.type("html").send(html);
 });
 
 app.get("/health", (_req, res) => {
@@ -435,8 +448,8 @@ app.post("/refresh-kb", async (_req, res) => {
 
 app.post("/chat", async (req, res) => {
   try {
-    const message = String(req.body?.message || "").trim();
-    const history = Array.isArray(req.body?.history) ? req.body.history : [];
+    const message = String(req.body && req.body.message ? req.body.message : "").trim();
+    const history = Array.isArray(req.body && req.body.history) ? req.body.history : [];
 
     if (!message) {
       return res.status(400).json({ error: "Message is required." });
@@ -448,16 +461,16 @@ app.post("/chat", async (req, res) => {
 
     const websiteContext = topChunks.length
       ? topChunks
-          .map(
-            (c, i) => `
-[Source ${i + 1}]
-URL: ${c.url}
-Title: ${c.title || "N/A"}
-H1: ${c.h1 || "N/A"}
-Content: ${c.text}
-`.trim()
-          )
-          .join("\\n\\n")
+          .map((c, i) => {
+            return [
+              `[Source ${i + 1}]`,
+              `URL: ${c.url}`,
+              `Title: ${c.title || "N/A"}`,
+              `H1: ${c.h1 || "N/A"}`,
+              `Content: ${c.text}`,
+            ].join("\n");
+          })
+          .join("\n\n")
       : "No relevant website content was found.";
 
     const recentHistory = history.slice(-6).map((msg) => ({
@@ -471,34 +484,38 @@ Content: ${c.text}
       messages: [
         {
           role: "system",
-          content: `
-You are BAIS Bot for Blue Ash Industrial Supply.
-
-Rules:
-- Answer using the website context when it is relevant.
-- If the answer is not clearly supported by the website context, say that you are not sure based on the website.
-- Do not make up policies, pricing, inventory, lead times, or contact details.
-- Be concise and helpful.
-- If useful, mention the page URL you used.
-`.trim(),
+          content: [
+            "You are BAIS Bot for Blue Ash Industrial Supply.",
+            "",
+            "Rules:",
+            "- Answer using the website context when it is relevant.",
+            "- If the answer is not clearly supported by the website context, say that you are not sure based on the website.",
+            "- Do not make up policies, pricing, inventory, lead times, or contact details.",
+            "- Be concise and helpful.",
+            "- If useful, mention the page URL you used.",
+          ].join("\n"),
         },
         ...recentHistory,
         {
           role: "user",
-          content: `
-Customer question:
-${message}
-
-Website context:
-${websiteContext}
-`.trim(),
+          content: [
+            "Customer question:",
+            message,
+            "",
+            "Website context:",
+            websiteContext,
+          ].join("\n"),
         },
       ],
     });
 
     const answer =
-      completion.choices?.[0]?.message?.content ||
-      "Sorry, I couldn't generate a response.";
+      completion.choices &&
+      completion.choices[0] &&
+      completion.choices[0].message &&
+      completion.choices[0].message.content
+        ? completion.choices[0].message.content
+        : "Sorry, I couldn't generate a response.";
 
     res.json({
       answer,
@@ -508,7 +525,7 @@ ${websiteContext}
       })),
     });
   } catch (err) {
-    console.error("Chat error:", err?.response?.data || err.message || err);
+    console.error("Chat error:", err && err.message ? err.message : err);
     res.status(500).json({
       error: "Something went wrong while processing the chat request.",
     });
@@ -517,13 +534,6 @@ ${websiteContext}
 
 app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
-
-  try {
-    await buildKnowledgeBase();
-  } catch (err) {
-    console.error("Initial KB build failed:", err.message);
-  }
-});
 
   try {
     await buildKnowledgeBase();
