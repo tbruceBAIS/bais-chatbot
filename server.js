@@ -126,7 +126,7 @@ app.get("/widget", (req, res) => {
 <body>
   <div class="chat-wrap">
     <div class="chat-header">
-      <h3>Blue Ash Assistant</h3>
+      <h3>Blue Ash AI - BAAI</h3>
       <p>General company questions only.</p>
     </div>
 
