@@ -215,8 +215,115 @@ app.get("/", (_req, res) => {
   res.json({ ok: true, service: "BAIS chatbot" });
 });
 
-app.get("/widget", (_req, res) => {
-  res.send("BAIS Chatbot is running");
+app.get("/widget", (req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>BAIS AI</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #f5f7fa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .chat-container {
+      width: 400px;
+      height: 500px;
+      background: white;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+      overflow: hidden;
+    }
+    .chat-header {
+      background: #1c50af;
+      color: white;
+      padding: 12px;
+      font-weight: bold;
+      text-align: center;
+    }
+    .chat-messages {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+    .msg {
+      margin-bottom: 10px;
+    }
+    .user {
+      text-align: right;
+      color: #1c50af;
+    }
+    .bot {
+      text-align: left;
+      color: #333;
+    }
+    .chat-input {
+      display: flex;
+      border-top: 1px solid #ddd;
+    }
+    .chat-input input {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      outline: none;
+    }
+    .chat-input button {
+      background: #1c50af;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="chat-container">
+  <div class="chat-header">BAIS AI Assistant</div>
+  <div class="chat-messages" id="messages"></div>
+
+  <div class="chat-input">
+    <input id="input" placeholder="Ask something..." />
+    <button onclick="send()">Send</button>
+  </div>
+</div>
+
+<script>
+async function send() {
+  const input = document.getElementById("input");
+  const messages = document.getElementById("messages");
+
+  const text = input.value.trim();
+  if (!text) return;
+
+  messages.innerHTML += '<div class="msg user">' + text + '</div>';
+  input.value = "";
+
+  const res = await fetch("/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ message: text })
+  });
+
+  const data = await res.json();
+
+  messages.innerHTML += '<div class="msg bot">' + data.answer + '</div>';
+  messages.scrollTop = messages.scrollHeight;
+}
+</script>
+
+</body>
+</html>
+  `);
 });
 
 app.get("/health", (_req, res) => {
