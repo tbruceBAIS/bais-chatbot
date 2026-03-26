@@ -1,282 +1,328 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import axios from "axios";
+import * as cheerio from "cheerio";
 import OpenAI from "openai";
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const port = process.env.PORT || 3000;
 
 const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-app.get("/", (req, res) => {
-  res.send("Blue Ash chatbot is running.");
-});
+const BASE_URL = process.env.WEBSITE_BASE_URL || "https://blue-prod-01.bessig.com";
 
-app.get("/widget", (req, res) => {
-  res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Blue Ash AI BAAI</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, Helvetica, sans-serif;
-      background: transparent;
-    }
-    .chat-wrap {
-      width: 100%;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      border: 1px solid #dbe6fb;
-      border-radius: 16px;
-      overflow: hidden;
-      background: #fff;
-      box-shadow: 0 18px 45px rgba(0,0,0,0.18);
-    }
-    .chat-header {
-      background: #1f4aa8;
-      color: #fff;
-      padding: 14px 16px;
-    }
-    .chat-header h3 {
-      margin: 0 0 4px;
-      font-size: 18px;
-    }
-    .chat-header p {
-      margin: 0;
-      font-size: 12px;
-      line-height: 1.4;
-      opacity: 0.95;
-    }
-    .chat-messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 14px;
-      background: #f7f9fc;
-    }
-    .msg {
-      margin-bottom: 10px;
-      display: flex;
-    }
-    .msg.user {
-      justify-content: flex-end;
-    }
-    .bubble {
-      max-width: 82%;
-      padding: 10px 12px;
-      border-radius: 14px;
-      font-size: 14px;
-      line-height: 1.45;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .msg.bot .bubble {
-      background: #fff;
-      color: #213047;
-      border: 1px solid #dbe6fb;
-      border-bottom-left-radius: 6px;
-    }
-    .msg.user .bubble {
-      background: #1f4aa8;
-      color: #fff;
-      border-bottom-right-radius: 6px;
-    }
-    .chat-footer {
-      padding: 12px;
-      border-top: 1px solid #e4ebf7;
-      background: #fff;
-    }
-    .chat-form {
-      display: flex;
-      gap: 8px;
-    }
-    .chat-input {
-      flex: 1;
-      height: 42px;
-      border: 1px solid #cfdcf5;
-      border-radius: 10px;
-      padding: 0 12px;
-      font-size: 14px;
-      outline: none;
-    }
-    .chat-send {
-      height: 42px;
-      border: none;
-      border-radius: 10px;
-      background: #1f4aa8;
-      color: #fff;
-      padding: 0 16px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .chat-note {
-      margin-top: 8px;
-      font-size: 11px;
-      color: #667892;
-      line-height: 1.4;
-    }
-  </style>
-</head>
-<body>
-  <div class="chat-wrap">
-    <div class="chat-header">
-      <h3>Blue Ash AI - BAAI</h3>
-      <p>General company questions only.</p>
-    </div>
+// ===== SIMPLE WEBSITE KB CACHE =====
+let kbChunks = [];
+let kbLastBuiltAt = 0;
+const KB_TTL_MS = 1000 * 60 * 30; // 30 minutes
 
-    <div class="chat-messages" id="messages">
-      <div class="msg bot">
-        <div class="bubble">Hi! I can help with general questions about Blue Ash Industrial Supply, brands, careers, and vending solutions.
+const FALLBACK_URLS = [
+  `${BASE_URL}/`,
+  `${BASE_URL}/content/page/aboutus`,
+  `${BASE_URL}/contact.php`,
+  `${BASE_URL}/content/page/vending-solutions`,
+];
 
-For quotes, orders, pricing, or order-specific help, please contact sales@blueashsupply.com or call (513) 530-0188.</div>
-      </div>
-    </div>
+function normalizeText(text = "") {
+  return text.replace(/\s+/g, " ").trim();
+}
 
-    <div class="chat-footer">
-      <form class="chat-form" id="chatForm">
-        <input id="chatInput" class="chat-input" type="text" placeholder="Ask a question..." autocomplete="off" />
-        <button class="chat-send" type="submit">Send</button>
-      </form>
-      <div class="chat-note">Friendly, technical, and general-info only.</div>
-    </div>
-  </div>
+function sanitizeTextForModel(text = "") {
+  return normalizeText(text)
+    .replace(/(javascript is required|skip to content|toggle navigation)/gi, "")
+    .trim();
+}
 
-  <script>
-    const form = document.getElementById("chatForm");
-    const input = document.getElementById("chatInput");
-    const messages = document.getElementById("messages");
+function chunkText(text, maxLen = 1400) {
+  const clean = sanitizeTextForModel(text);
+  if (!clean) return [];
 
-    function addMessage(text, type) {
-      const msg = document.createElement("div");
-      msg.className = "msg " + type;
+  const sentences = clean.split(/(?<=[.!?])\s+/);
+  const chunks = [];
+  let current = "";
 
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.textContent = text;
-
-      msg.appendChild(bubble);
-      messages.appendChild(msg);
-      messages.scrollTop = messages.scrollHeight;
+  for (const sentence of sentences) {
+    if ((current + " " + sentence).length > maxLen) {
+      if (current.trim()) chunks.push(current.trim());
+      current = sentence;
+    } else {
+      current += (current ? " " : "") + sentence;
     }
+  }
 
-    function addTyping() {
-      const msg = document.createElement("div");
-      msg.className = "msg bot";
-      msg.id = "typing-msg";
+  if (current.trim()) chunks.push(current.trim());
+  return chunks;
+}
 
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.textContent = "Typing...";
+function scoreChunk(query, chunk) {
+  const qWords = query
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
 
-      msg.appendChild(bubble);
-      messages.appendChild(msg);
-      messages.scrollTop = messages.scrollHeight;
+  const text = chunk.text.toLowerCase();
+  let score = 0;
+
+  for (const word of qWords) {
+    const matches = text.split(word).length - 1;
+    score += matches;
+  }
+
+  // Boost title/h1/url matches
+  for (const word of qWords) {
+    if (chunk.title?.toLowerCase().includes(word)) score += 3;
+    if (chunk.h1?.toLowerCase().includes(word)) score += 4;
+    if (chunk.url?.toLowerCase().includes(word)) score += 2;
+  }
+
+  return score;
+}
+
+async function fetchSitemapUrls() {
+  const candidates = [
+    `${BASE_URL}/sitemap.xml`,
+    `${BASE_URL}/sitemap_index.xml`,
+  ];
+
+  for (const sitemapUrl of candidates) {
+    try {
+      const res = await axios.get(sitemapUrl, { timeout: 15000 });
+      const xml = String(res.data || "");
+
+      const matches = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((m) =>
+        m[1].trim()
+      );
+
+      const urls = matches.filter(
+        (u) =>
+          u.startsWith(BASE_URL) &&
+          !u.match(/\.(jpg|jpeg|png|gif|webp|pdf|svg)$/i) &&
+          !u.includes("/cart") &&
+          !u.includes("/checkout") &&
+          !u.includes("/account") &&
+          !u.includes("/search")
+      );
+
+      if (urls.length) return [...new Set(urls)];
+    } catch {
+      // try next sitemap candidate
     }
+  }
 
-    function removeTyping() {
-      const el = document.getElementById("typing-msg");
-      if (el) el.remove();
+  return FALLBACK_URLS;
+}
+
+function htmlToStructuredContent(html, url) {
+  const $ = cheerio.load(html);
+
+  $("script, style, noscript, iframe, svg").remove();
+
+  const title = normalizeText($("title").first().text());
+  const h1 = normalizeText($("h1").first().text());
+
+  // Prefer main-ish containers if they exist
+  const preferredSelectors = [
+    "main",
+    ".cms_content_area",
+    ".uk-container",
+    ".content",
+    "#content",
+    "body",
+  ];
+
+  let bodyText = "";
+  for (const selector of preferredSelectors) {
+    const text = normalizeText($(selector).first().text());
+    if (text && text.length > bodyText.length) {
+      bodyText = text;
     }
+  }
 
-    form.addEventListener("submit", async function(e) {
-      e.preventDefault();
+  const finalText = sanitizeTextForModel(bodyText);
 
-      const text = input.value.trim();
-      if (!text) return;
+  return { url, title, h1, text: finalText };
+}
 
-      addMessage(text, "user");
-      input.value = "";
-      addTyping();
+async function fetchPage(url) {
+  const res = await axios.get(url, {
+    timeout: 20000,
+    headers: {
+      "User-Agent": "BAISBot-Retrieval/1.0",
+    },
+  });
 
-      try {
-        const response = await fetch("/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text })
+  return htmlToStructuredContent(res.data, url);
+}
+
+async function buildKnowledgeBase() {
+  console.log("Building website knowledge base...");
+  const urls = await fetchSitemapUrls();
+  const allChunks = [];
+
+  for (const url of urls) {
+    try {
+      const page = await fetchPage(url);
+      if (!page.text || page.text.length < 200) continue;
+
+      const pieces = chunkText(page.text, 1400);
+      for (const piece of pieces) {
+        allChunks.push({
+          url: page.url,
+          title: page.title,
+          h1: page.h1,
+          text: piece,
         });
-
-        const data = await response.json();
-        removeTyping();
-        addMessage(data.reply || "Sorry, I couldn't get a response.", "bot");
-      } catch (err) {
-        removeTyping();
-        addMessage("Sorry, I couldn't connect right now. Please contact sales@blueashsupply.com or call (513) 530-0188.", "bot");
       }
-    });
-  </script>
-</body>
-</html>`);
+
+      console.log(`Indexed: ${url}`);
+    } catch (err) {
+      console.warn(`Failed to index ${url}: ${err.message}`);
+    }
+  }
+
+  kbChunks = allChunks;
+  kbLastBuiltAt = Date.now();
+  console.log(`Knowledge base ready: ${kbChunks.length} chunks`);
+}
+
+async function ensureKnowledgeBase() {
+  const stale = Date.now() - kbLastBuiltAt > KB_TTL_MS;
+  if (!kbChunks.length || stale) {
+    await buildKnowledgeBase();
+  }
+}
+
+function getTopChunks(query, limit = 6) {
+  const scored = kbChunks
+    .map((chunk) => ({
+      ...chunk,
+      score: scoreChunk(query, chunk),
+    }))
+    .filter((chunk) => chunk.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return scored;
+}
+
+// ===== EXPRESS =====
+app.use(cors());
+app.use(express.json({ limit: "1mb" }));
+
+app.get("/", (_req, res) => {
+  res.json({ ok: true, service: "BAIS chatbot" });
+});
+
+app.get("/health", (_req, res) => {
+  res.json({
+    ok: true,
+    kbChunks: kbChunks.length,
+    kbLastBuiltAt,
+  });
+});
+
+app.post("/refresh-kb", async (_req, res) => {
+  try {
+    await buildKnowledgeBase();
+    res.json({ ok: true, chunks: kbChunks.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to rebuild knowledge base." });
+  }
 });
 
 app.post("/chat", async (req, res) => {
-  const userMessage = req.body.message;
-
-  if (!userMessage || !userMessage.trim()) {
-    return res.json({ reply: "Please enter a question." });
-  }
-
   try {
-    const response = await client.responses.create({
-      model: "gpt-4o-mini",
-      input: [
+    const message = String(req.body?.message || "").trim();
+    const history = Array.isArray(req.body?.history) ? req.body.history : [];
+
+    if (!message) {
+      return res.status(400).json({ error: "Message is required." });
+    }
+
+    await ensureKnowledgeBase();
+
+    const topChunks = getTopChunks(message, 6);
+
+    const websiteContext = topChunks.length
+      ? topChunks
+          .map(
+            (c, i) => `
+[Source ${i + 1}]
+URL: ${c.url}
+Title: ${c.title || "N/A"}
+H1: ${c.h1 || "N/A"}
+Content: ${c.text}
+`.trim()
+          )
+          .join("\n\n")
+      : "No relevant website content was found.";
+
+    const recentHistory = history.slice(-6).map((msg) => ({
+      role: msg.role === "assistant" ? "assistant" : "user",
+      content: String(msg.content || ""),
+    }));
+
+    const completion = await client.chat.completions.create({
+      model: "gpt-4.1-mini",
+      temperature: 0.2,
+      messages: [
         {
           role: "system",
           content: `
-You are the Blue Ash Industrial Supply assistant.
+You are BAIS Bot for Blue Ash Industrial Supply.
 
-Answer only general questions about the company, brands, careers, contact details, and vending solutions.
-
-Tone: friendly and technical.
-
-Company facts:
-- Blue Ash Industrial Supply is a family-owned distributor established in 1984.
-- The company is based in Cincinnati, Ohio.
-- It serves customers in Ohio, Kentucky, Indiana, and West Virginia.
-- It focuses on metalworking, MRO, and vending solutions.
-- It emphasizes technical expertise, responsive service, dependable solutions, and strong vendor partnerships.
-
-Do not:
-- give pricing
-- create quotes
-- help with orders
-- promise inventory
-- promise shipping or lead times
-- provide account-specific support
-
-If asked about those topics, reply:
-"Please contact our team at sales@blueashsupply.com or call (513) 530-0188."
-
-If unsure, say so and direct the visitor to sales@blueashsupply.com or (513) 530-0188.
-          `
+Rules:
+- Answer using the website context when it is relevant.
+- If the answer is not clearly supported by the website context, say that you are not sure based on the website.
+- Do not make up policies, pricing, inventory, lead times, or contact details.
+- Be concise and helpful.
+- If useful, mention the page URL you used.
+`.trim(),
         },
+        ...recentHistory,
         {
           role: "user",
-          content: userMessage
-        }
-      ]
+          content: `
+Customer question:
+${message}
+
+Website context:
+${websiteContext}
+`.trim(),
+        },
+      ],
     });
 
-    const reply =
-      response.output_text?.trim() ||
-      "Sorry, I couldn't get a response right now. Please contact sales@blueashsupply.com or call (513) 530-0188.";
+    const answer =
+      completion.choices?.[0]?.message?.content ||
+      "Sorry, I couldn't generate a response.";
 
-    res.json({ reply });
-  } catch (error) {
-    console.error("OpenAI error:", error);
+    res.json({
+      answer,
+      sources: topChunks.map((c) => ({
+        url: c.url,
+        title: c.title || c.h1 || c.url,
+      })),
+    });
+  } catch (err) {
+    console.error("Chat error:", err?.response?.data || err.message || err);
     res.status(500).json({
-      reply: "Sorry, something went wrong. Please contact our team at sales@blueashsupply.com or call (513) 530-0188."
+      error: "Something went wrong while processing the chat request.",
     });
   }
 });
 
-const PORT = process.env.PORT || 3000;
+app.listen(port, async () => {
+  console.log(`Server running on port ${port}`);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  try {
+    await buildKnowledgeBase();
+  } catch (err) {
+    console.error("Initial KB build failed:", err.message);
+  }
 });
