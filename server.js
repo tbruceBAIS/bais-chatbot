@@ -72,7 +72,6 @@ function scoreChunk(query, chunk) {
     score += matches;
   }
 
-  // Boost title/h1/url matches
   for (const word of qWords) {
     if (chunk.title?.toLowerCase().includes(word)) score += 3;
     if (chunk.h1?.toLowerCase().includes(word)) score += 4;
@@ -124,7 +123,6 @@ function htmlToStructuredContent(html, url) {
   const title = normalizeText($("title").first().text());
   const h1 = normalizeText($("h1").first().text());
 
-  // Prefer main-ish containers if they exist
   const preferredSelectors = [
     "main",
     ".cms_content_area",
@@ -215,6 +213,10 @@ app.use(express.json({ limit: "1mb" }));
 
 app.get("/", (_req, res) => {
   res.json({ ok: true, service: "BAIS chatbot" });
+});
+
+app.get("/widget", (_req, res) => {
+  res.send("BAIS Chatbot is running");
 });
 
 app.get("/health", (_req, res) => {
