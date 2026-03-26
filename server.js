@@ -1,12 +1,14 @@
 import express from "express";
 import cors from "cors";
-import fetch from "node-fetch";
+import OpenAI from "openai";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 app.get("/", (req, res) => {
   res.send("Blue Ash chatbot is running.");
@@ -215,19 +217,18 @@ For quotes, orders, pricing, or order-specific help, please contact sales@blueas
 app.post("/chat", async (req, res) => {
   const userMessage = req.body.message;
 
+  if (!userMessage || !userMessage.trim()) {
+    return res.json({ reply: "Please enter a question." });
+  }
+
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-5.4",
-        input: [
-          {
-            role: "system",
-            content: `You are the Blue Ash Industrial Supply assistant.
+    const response = await client.responses.create({
+      model: "gpt-5.4",
+      input: [
+        {
+          role: "system",
+          content: `
+You are the Blue Ash Industrial Supply assistant.
 
 Answer only general questions about the company, brands, careers, contact details, and vending solutions.
 
@@ -251,34 +252,24 @@ Do not:
 If asked about those topics, reply:
 "Please contact our team at sales@blueashsupply.com or call (513) 530-0188."
 
-If unsure, say so and direct the visitor to sales@blueashsupply.com or (513) 530-0188.`
-          },
-          {
-            role: "user",
-            content: userMessage
-          }
-        ]
-      })
+If unsure, say so and direct the visitor to sales@blueashsupply.com or (513) 530-0188.
+          `
+        },
+        {
+          role: "user",
+          content: userMessage
+        }
+      ]
     });
 
-    const data = await response.json();
-
-    let reply = "Sorry, I couldn't get a response right now. Please contact sales@blueashsupply.com or call (513) 530-0188.";
-
-    if (
-      data &&
-      data.output &&
-      data.output[0] &&
-      data.output[0].content &&
-      data.output[0].content[0] &&
-      data.output[0].content[0].text
-    ) {
-      reply = data.output[0].content[0].text;
-    }
+    const reply =
+      response.output_text?.trim() ||
+      "Sorry, I couldn't get a response right now. Please contact sales@blueashsupply.com or call (513) 530-0188.";
 
     res.json({ reply });
   } catch (error) {
-    res.json({
+    console.error("OpenAI error:", error);
+    res.status(500).json({
       reply: "Sorry, something went wrong. Please contact our team at sales@blueashsupply.com or call (513) 530-0188."
     });
   }
@@ -287,5 +278,5 @@ If unsure, say so and direct the visitor to sales@blueashsupply.com or (513) 530
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(\`Server running on port \${PORT}\`);
 });
