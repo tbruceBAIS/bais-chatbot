@@ -20,7 +20,7 @@ app.get("/widget", (req, res) => {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Blue Ash Assistant</title>
+  <title>Blue Ash AI BAAI</title>
   <style>
     * { box-sizing: border-box; }
     body {
