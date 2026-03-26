@@ -219,7 +219,7 @@ app.post("/chat", async (req, res) => {
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        "Authorization": \`Bearer \${OPENAI_API_KEY}\`,
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -227,7 +227,7 @@ app.post("/chat", async (req, res) => {
         input: [
           {
             role: "system",
-            content: \`You are the Blue Ash Industrial Supply assistant.
+            content: `You are the Blue Ash Industrial Supply assistant.
 
 Answer only general questions about the company, brands, careers, contact details, and vending solutions.
 
@@ -251,7 +251,7 @@ Do not:
 If asked about those topics, reply:
 "Please contact our team at sales@blueashsupply.com or call (513) 530-0188."
 
-If unsure, say so and direct the visitor to sales@blueashsupply.com or (513) 530-0188.\`
+If unsure, say so and direct the visitor to sales@blueashsupply.com or (513) 530-0188.`
           },
           {
             role: "user",
