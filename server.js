@@ -19,7 +19,7 @@ const VECTOR_STORE_ID =
 let kbChunks = [];
 
 /* =========================
-   BASIC KB (WEBSITE)
+   WEBSITE KNOWLEDGE
 ========================= */
 async function buildKnowledgeBase() {
   const urls = [
@@ -70,7 +70,7 @@ app.use(cors());
 app.use(express.json());
 
 /* =========================
-   WIDGET UI
+   WIDGET UI (PHONE STYLE)
 ========================= */
 app.get("/widget", (_req, res) => {
   res.send(`
@@ -99,13 +99,13 @@ button{background:#1c50af;color:#fff;border:none;width:80px}
 <body>
 
 <div class="chat">
-  <div class="header">BAIS AI Assistant</div>
+  <div class="header">B.O.B.</div>
   <div id="messages" class="messages">
-    <div class="row bot"><div class="bubble">Hi! How can I help you today?</div></div>
+    <div class="row bot"><div class="bubble">Hey — I’m B.O.B. 👋 How can I help?</div></div>
   </div>
 
   <div class="input">
-    <input id="msg" placeholder="Ask something...">
+    <input id="msg" placeholder="Ask me anything..." />
     <button onclick="send()">Send</button>
   </div>
 </div>
@@ -142,7 +142,7 @@ function typing(){
 
 async function send(){
   const input = document.getElementById("msg");
-  const text = input.value;
+  const text = input.value.trim();
   if(!text) return;
 
   add(text,"user");
@@ -161,6 +161,13 @@ async function send(){
   document.getElementById("typing").remove();
   add(data.answer,"bot");
 }
+
+// 🔥 ENTER KEY SUPPORT
+document.getElementById("msg").addEventListener("keydown", function(e){
+  if(e.key === "Enter"){
+    send();
+  }
+});
 </script>
 
 </body>
@@ -169,7 +176,7 @@ async function send(){
 });
 
 /* =========================
-   CHAT
+   CHAT LOGIC
 ========================= */
 app.post("/chat", async (req, res) => {
   try {
@@ -182,7 +189,26 @@ app.post("/chat", async (req, res) => {
       input: [
         {
           role: "system",
-          content: "You are a helpful assistant for Blue Ash Industrial Supply."
+          content: `
+You are B.O.B. (Blue Ash Bot), built by Trevor at Blue Ash Industrial Supply.
+
+RULES:
+- NEVER use markdown (** or # or bullet formatting symbols)
+- Use clean plain text only
+- Keep answers short and easy to read
+- Use spacing instead of formatting
+- Talk like a knowledgeable shop expert
+
+PERSONALITY:
+- Helpful
+- Direct
+- Practical
+- Friendly but not robotic
+
+SPECIAL RULE:
+If someone asks who made you, say:
+"I was built by Trevor at Blue Ash Industrial Supply."
+`
         },
         {
           role: "user",
@@ -213,12 +239,12 @@ app.post("/chat", async (req, res) => {
 
   } catch (err) {
     console.log(err);
-    res.json({ answer: "Error occurred." });
+    res.json({ answer: "Something went wrong." });
   }
 });
 
 /* =========================
-   START
+   START SERVER
 ========================= */
 app.listen(port, async () => {
   console.log("Running on port", port);
