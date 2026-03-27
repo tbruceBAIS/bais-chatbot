@@ -34,7 +34,7 @@ async function buildKnowledgeBase() {
 
   for (const url of urls) {
     try {
-      const res = await axios.get(url, { timeout: 20000 });
+      const res = await axios.get(url);
       const $ = cheerio.load(res.data);
 
       $("script, style, noscript").remove();
@@ -48,7 +48,7 @@ async function buildKnowledgeBase() {
 
       console.log("Indexed:", url);
     } catch (err) {
-      console.log("Failed:", url, err.message);
+      console.log("Failed:", url);
     }
   }
 
@@ -70,36 +70,18 @@ function getContext(query) {
 }
 
 /* =========================
-   HELPERS
+   CLEAN TEXT
 ========================= */
 function cleanPlainText(text) {
   return String(text || "")
     .replace(/\*\*/g, "")
     .replace(/#{1,6}\s*/g, "")
-    .replace(/[•]/g, "-")
-    .replace(/\r/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
-/* =========================
-   APP SETUP
-========================= */
 app.use(cors());
 app.use(express.json());
-
-app.get("/", (_req, res) => {
-  res.json({ ok: true, service: "B.O.B." });
-});
-
-app.get("/health", (_req, res) => {
-  res.json({
-    ok: true,
-    kbChunks: kbChunks.length,
-    baseUrl: BASE_URL,
-    vectorStoreId: VECTOR_STORE_ID,
-  });
-});
 
 /* =========================
    WIDGET UI
@@ -111,22 +93,19 @@ app.get("/widget", (_req, res) => {
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#eef1f6}
+body{margin:0;font-family:Arial;background:#eef1f6}
 .chat{width:100%;max-width:390px;height:520px;margin:auto;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;background:#f3f4f8}
 .header{background:#1c50af;color:#fff;padding:14px;text-align:center;font-weight:bold}
 .messages{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
 .row{display:flex}
 .user{justify-content:flex-end}
 .bot{justify-content:flex-start}
-.bubble{max-width:80%;padding:10px 14px;border-radius:18px;font-size:14px;white-space:pre-wrap;line-height:1.45}
-.user .bubble{background:#1c50af;color:#fff;border-bottom-right-radius:6px}
-.bot .bubble{background:#fff;border:1px solid #ddd;border-bottom-left-radius:6px}
-.input{display:flex;border-top:1px solid #ddd;background:#fff}
-input{flex:1;border:none;padding:12px;font-size:14px;outline:none}
-button{background:#1c50af;color:#fff;border:none;width:80px;cursor:pointer}
-button:hover{background:#17428f}
-.dot{height:6px;width:6px;background:#999;border-radius:50%;display:inline-block;margin:2px;animation:blink 1.4s infinite}
-@keyframes blink{0%{opacity:.2}20%{opacity:1}100%{opacity:.2}}
+.bubble{max-width:80%;padding:10px 14px;border-radius:18px;font-size:14px;white-space:pre-wrap}
+.user .bubble{background:#1c50af;color:#fff}
+.bot .bubble{background:#fff;border:1px solid #ddd}
+.input{display:flex;border-top:1px solid #ddd}
+input{flex:1;border:none;padding:12px}
+button{background:#1c50af;color:#fff;border:none;width:80px}
 </style>
 </head>
 <body>
@@ -134,19 +113,17 @@ button:hover{background:#17428f}
 <div class="chat">
   <div class="header">B.O.B.</div>
   <div id="messages" class="messages">
-    <div class="row bot"><div class="bubble">Hey — I’m B.O.B. (Blue's Operation Bot) 👋 How can I help?</div></div>
+    <div class="row bot"><div class="bubble">Hey — I’m B.O.B. 👋</div></div>
   </div>
 
   <div class="input">
     <input id="msg" placeholder="Ask me anything..." />
-    <button id="sendBtn" onclick="send()">Send</button>
+    <button onclick="send()">Send</button>
   </div>
 </div>
 
 <script>
 const messages = document.getElementById("messages");
-const input = document.getElementById("msg");
-const sendBtn = document.getElementById("sendBtn");
 
 function add(text, role){
   const row = document.createElement("div");
@@ -161,57 +138,25 @@ function add(text, role){
   messages.scrollTop = messages.scrollHeight;
 }
 
-function typing(){
-  const row = document.createElement("div");
-  row.className = "row bot";
-  row.id = "typing";
-
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-  bubble.innerHTML = "<span class='dot'></span><span class='dot'></span><span class='dot'></span>";
-
-  row.appendChild(bubble);
-  messages.appendChild(row);
-  messages.scrollTop = messages.scrollHeight;
-}
-
 async function send(){
+  const input = document.getElementById("msg");
   const text = input.value.trim();
   if(!text) return;
 
   add(text,"user");
-  input.value = "";
-  input.disabled = true;
-  sendBtn.disabled = true;
+  input.value="";
 
-  typing();
+  const res = await fetch("/chat",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({message:text})
+  });
 
-  try {
-    const res = await fetch("/chat",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({message:text})
-    });
-
-    const data = await res.json();
-
-    const typingEl = document.getElementById("typing");
-    if (typingEl) typingEl.remove();
-
-    add(data.answer || "Something went wrong.","bot");
-  } catch (err) {
-    const typingEl = document.getElementById("typing");
-    if (typingEl) typingEl.remove();
-
-    add("Something went wrong.","bot");
-  } finally {
-    input.disabled = false;
-    sendBtn.disabled = false;
-    input.focus();
-  }
+  const data = await res.json();
+  add(data.answer,"bot");
 }
 
-input.addEventListener("keydown", function(e){
+document.getElementById("msg").addEventListener("keydown", function(e){
   if(e.key === "Enter"){
     send();
   }
@@ -224,18 +169,14 @@ input.addEventListener("keydown", function(e){
 });
 
 /* =========================
-   LIVE PRODUCT SEARCH
+   PRODUCT SEARCH (FIXED)
 ========================= */
 app.get("/product-search", async (req, res) => {
   try {
     const kw = String(req.query.kw || "").trim();
 
-    if (!kw) {
-      return res.json({ keyword: "", results: [] });
-    }
-
     const searchUrl = `${BASE_URL}/showgroups.php?kw=${encodeURIComponent(kw)}`;
-    const page = await axios.get(searchUrl, { timeout: 20000 });
+    const page = await axios.get(searchUrl);
     const $ = cheerio.load(page.data);
 
     const results = [];
@@ -243,72 +184,47 @@ app.get("/product-search", async (req, res) => {
 
     $("a").each((_, el) => {
       const href = $(el).attr("href");
-      const title = $(el).text().replace(/\s+/g, " ").trim();
+      const title = $(el).text().trim();
 
       if (!href || !title) return;
-      if (title.length < 3) return;
-      if (/javascript:/i.test(href)) return;
-      if (href.startsWith("#")) return;
+
+      const cleanHref = href.startsWith("/") ? href.slice(1) : href;
 
       const fullUrl = href.startsWith("http")
         ? href
-        : `${BASE_URL}/${href.replace(/^\\/+/, "")}`;
+        : `${BASE_URL}/${cleanHref}`;
 
-      if (seen.has(fullUrl)) return;
-
-      seen.add(fullUrl);
-      results.push({
-        title,
-        url: fullUrl,
-      });
+      if (!seen.has(fullUrl)) {
+        seen.add(fullUrl);
+        results.push({ title, url: fullUrl });
+      }
     });
 
-    res.json({
-      keyword: kw,
-      results: results.slice(0, 12),
-    });
+    res.json({ results: results.slice(0, 10) });
   } catch (err) {
-    console.log("Product search error:", err.message);
-    res.status(500).json({
-      keyword: String(req.query.kw || ""),
-      results: [],
-    });
+    console.log(err);
+    res.json({ results: [] });
   }
 });
 
 /* =========================
-   CHAT LOGIC
+   CHAT
 ========================= */
 app.post("/chat", async (req, res) => {
   try {
-    const message = String(req.body?.message || "").trim();
+    const message = req.body.message;
 
     if (!message) {
-      return res.json({ answer: "Please enter a message." });
+      return res.json({ answer: "Ask me something." });
     }
 
-    const lowerMessage = message.toLowerCase();
-
-    const bobQuestions = [
-      "what does bob stand for",
-      "what does b.o.b. stand for",
-      "what is bob short for",
-      "what is b.o.b. short for",
-    ];
-
-    const makerQuestions = [
-      "who made you",
-      "who built you",
-      "who created you",
-    ];
-
-    if (bobQuestions.some((q) => lowerMessage.includes(q))) {
+    if (message.toLowerCase().includes("bob stand")) {
       return res.json({
         answer: "B.O.B. stands for Blue's Operation Bot.",
       });
     }
 
-    if (makerQuestions.some((q) => lowerMessage.includes(q))) {
+    if (message.toLowerCase().includes("who made")) {
       return res.json({
         answer: "I was built by Trevor at Blue Ash Industrial Supply.",
       });
@@ -316,35 +232,13 @@ app.post("/chat", async (req, res) => {
 
     const context = getContext(message);
 
-    const systemPrompt =
-      "You are B.O.B. (Blue's Operation Bot), the AI assistant for Blue Ash Industrial Supply.\n\n" +
-      "PERSONALITY:\n" +
-      "- Helpful\n" +
-      "- Direct\n" +
-      "- Practical\n" +
-      "- Sounds like a knowledgeable shop expert\n\n" +
-      "STYLE RULES:\n" +
-      "- Use clean plain text only\n" +
-      "- Do not use markdown symbols like **, #, or raw markdown list styling\n" +
-      "- Keep answers short and easy to read\n" +
-      "- Use short paragraphs with spacing\n" +
-      "- Be natural and not robotic\n\n" +
-      "IDENTITY RULES:\n" +
-      "- If someone asks what B.O.B. stands for, say: B.O.B. stands for Blue's Operation Bot.\n" +
-      "- If someone asks who built you, say: I was built by Trevor at Blue Ash Industrial Supply.\n" +
-      "- If someone asks what you do, say: I help with tooling, machining questions, and finding the right solutions.\n\n" +
-      "BEHAVIOR:\n" +
-      "- Use provided context when available\n" +
-      "- Use file search when helpful\n" +
-      "- Do not make up pricing, inventory, or lead times\n" +
-      "- If you are not sure, say so clearly";
-
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: [
         {
           role: "system",
-          content: systemPrompt,
+          content:
+            "You are B.O.B., a machining and tooling assistant. Answer clearly and simply. No markdown.",
         },
         {
           role: "user",
@@ -359,38 +253,21 @@ app.post("/chat", async (req, res) => {
       ],
     });
 
-    let answer = "Sorry, I couldn't generate a response.";
-
-    try {
-      if (response.output_text) {
-        answer = response.output_text;
-      } else if (response.output) {
-        answer = response.output
-          .map((o) => (o.content || []).map((c) => c.text || "").join(""))
-          .join("\n");
-      }
-    } catch (e) {
-      console.log("Parse error:", e);
-    }
+    let answer = response.output_text || "No response.";
 
     answer = cleanPlainText(answer);
 
     res.json({ answer });
   } catch (err) {
-    console.log("Chat error:", err.message);
-    res.json({ answer: "Something went wrong." });
+    console.log(err);
+    res.json({ answer: "Error occurred." });
   }
 });
 
 /* =========================
-   START SERVER
+   START
 ========================= */
 app.listen(port, async () => {
   console.log("Running on port", port);
-
-  try {
-    await buildKnowledgeBase();
-  } catch (err) {
-    console.log("KB build failed:", err.message);
-  }
+  await buildKnowledgeBase();
 });
