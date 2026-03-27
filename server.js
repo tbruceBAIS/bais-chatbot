@@ -416,10 +416,29 @@ app.post("/chat", async (req, res) => {
     const context = getContext(message);
 
     let productResults = [];
-    if (looksProductIntent(message)) {
-      const productQuery = extractProductQuery(message);
-      productResults = await searchProducts(productQuery);
-    }
+
+if (looksProductIntent(message)) {
+  let productQuery = extractProductQuery(message);
+
+  if (productQuery === "drilling") {
+    productResults = [
+      {
+        title: "Solid Carbide Drills",
+        url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill"
+      },
+      {
+        title: "Indexable Drill Bodies",
+        url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill"
+      },
+      {
+        title: "Drill Inserts",
+        url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill"
+      }
+    ];
+  } else {
+    productResults = await searchProducts(productQuery);
+  }
+}
 
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
