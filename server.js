@@ -80,6 +80,115 @@ function cleanPlainText(text) {
     .trim();
 }
 
+/* =========================
+   PRODUCT SEARCH HELPERS
+========================= */
+function isJunkTitle(title) {
+  const lower = title.toLowerCase();
+
+  return (
+    title.length < 8 ||
+    lower.includes("skip") ||
+    lower.includes("facebook") ||
+    lower.includes("twitter") ||
+    lower.includes("linkedin") ||
+    lower.includes("email") ||
+    lower.includes("search") ||
+    lower.includes("navigation") ||
+    lower.includes("footer") ||
+    lower.includes("phone") ||
+    lower.includes("road cincinnati") ||
+    lower.includes("all categories")
+  );
+}
+
+function looksProductIntent(message) {
+  const lower = String(message || "").toLowerCase();
+
+  const productKeywords = [
+    "drill",
+    "drills",
+    "insert",
+    "inserts",
+    "mill",
+    "mills",
+    "end mill",
+    "tap",
+    "taps",
+    "tool",
+    "tools",
+    "holder",
+    "holders",
+    "sandvik",
+    "iscar",
+    "kyocera",
+    "sgs",
+    "carbide",
+    "thread",
+    "threading",
+    "boring",
+    "grooving",
+    "parting",
+    "reamer",
+    "reaming",
+    "cutting fluid",
+    "coolant",
+    "show me",
+    "do you carry",
+    "do you have",
+    "looking for",
+    "recommend a",
+    "recommend me",
+    "need a",
+    "need an"
+  ];
+
+  return productKeywords.some((k) => lower.includes(k));
+}
+
+async function searchProducts(keyword) {
+  try {
+    const kw = String(keyword || "").trim();
+    if (!kw) return [];
+
+    const searchUrl = `${BASE_URL}/showgroups.php?kw=${encodeURIComponent(kw)}`;
+    const page = await axios.get(searchUrl, { timeout: 20000 });
+    const $ = cheerio.load(page.data);
+
+    const results = [];
+    const seen = new Set();
+
+    $("a").each((_, el) => {
+      const href = $(el).attr("href");
+      const title = $(el).text().replace(/\s+/g, " ").trim();
+
+      if (!href || !title) return;
+      if (isJunkTitle(title)) return;
+      if (href.includes("javascript")) return;
+      if (href.startsWith("#")) return;
+
+      const cleanHref = href.startsWith("/") ? href.slice(1) : href;
+
+      const fullUrl = href.startsWith("http")
+        ? href
+        : `${BASE_URL}/${cleanHref}`;
+
+      if (seen.has(fullUrl)) return;
+      seen.add(fullUrl);
+
+      results.push({
+        title,
+        url: fullUrl,
+      });
+    });
+
+    return results.slice(0, 5);
+  } catch (err) {
+    console.log("Product search helper error:", err.message);
+    return [];
+  }
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -219,7 +328,7 @@ input.addEventListener("keydown", function(e){
 });
 
 /* =========================
-   PRODUCT SEARCH
+   PRODUCT SEARCH ROUTE
 ========================= */
 app.get("/product-search", async (req, res) => {
   try {
@@ -229,54 +338,10 @@ app.get("/product-search", async (req, res) => {
       return res.json({ results: [] });
     }
 
-    const searchUrl = `${BASE_URL}/showgroups.php?kw=${encodeURIComponent(kw)}`;
-    const page = await axios.get(searchUrl, { timeout: 20000 });
-    const $ = cheerio.load(page.data);
-
-    const results = [];
-    const seen = new Set();
-
-    $("a").each((_, el) => {
-      const href = $(el).attr("href");
-      const title = $(el).text().replace(/\s+/g, " ").trim();
-
-      if (!href || !title) return;
-
-      if (title.length < 8) return;
-
-      const lowerTitle = title.toLowerCase();
-
-      if (lowerTitle.includes("skip")) return;
-      if (lowerTitle.includes("facebook")) return;
-      if (lowerTitle.includes("twitter")) return;
-      if (lowerTitle.includes("linkedin")) return;
-      if (lowerTitle.includes("email")) return;
-      if (lowerTitle.includes("search")) return;
-      if (lowerTitle.includes("navigation")) return;
-      if (lowerTitle.includes("footer")) return;
-
-      if (href.includes("javascript")) return;
-      if (href.startsWith("#")) return;
-
-      const cleanHref = href.startsWith("/") ? href.slice(1) : href;
-
-      const fullUrl = href.startsWith("http")
-        ? href
-        : `${BASE_URL}/${cleanHref}`;
-
-      if (seen.has(fullUrl)) return;
-
-      seen.add(fullUrl);
-
-      results.push({
-        title,
-        url: fullUrl,
-      });
-    });
-
-    res.json({ results: results.slice(0, 8) });
+    const results = await searchProducts(kw);
+    res.json({ results });
   } catch (err) {
-    console.log("Product search error:", err.message);
+    console.log("Product search route error:", err.message);
     res.json({ results: [] });
   }
 });
@@ -316,17 +381,35 @@ app.post("/chat", async (req, res) => {
 
     const context = getContext(message);
 
+    let productResults = [];
+    if (looksProductIntent(message)) {
+      productResults = await searchProducts(message);
+    }
+
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: [
         {
           role: "system",
           content:
-            "You are B.O.B., Blue's Operation Bot for Blue Ash Industrial Supply. Answer clearly and simply in plain text. Do not use markdown. Keep answers short, practical, and helpful. If asked what B.O.B. stands for, say Blue's Operation Bot. If asked who built you, say Trevor at Blue Ash Industrial Supply built you.",
+            "You are B.O.B., Blue's Operation Bot for Blue Ash Industrial Supply. " +
+            "Answer clearly and simply in plain text. " +
+            "Do not use markdown. " +
+            "Keep answers short, practical, and helpful. " +
+            "If asked what B.O.B. stands for, say Blue's Operation Bot. " +
+            "If asked who built you, say Trevor at Blue Ash Industrial Supply built you. " +
+            "If product options are available, briefly explain them without inventing specs, pricing, or inventory."
         },
         {
           role: "user",
-          content: message + "\n\nContext:\n" + context,
+          content:
+            message +
+            "\n\nWebsite context:\n" +
+            context +
+            "\n\nProduct search results:\n" +
+            (productResults.length
+              ? productResults.map((p) => `${p.title} - ${p.url}`).join("\n")
+              : "No product results found.")
         },
       ],
       tools: [
@@ -352,6 +435,16 @@ app.post("/chat", async (req, res) => {
     }
 
     answer = cleanPlainText(answer);
+
+    if (productResults.length > 0) {
+      let productText = "\n\nHere are some options from our site:\n\n";
+
+      productResults.slice(0, 3).forEach((p) => {
+        productText += `${p.title}\n${p.url}\n\n`;
+      });
+
+      answer += productText;
+    }
 
     res.json({ answer });
   } catch (err) {
