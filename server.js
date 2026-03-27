@@ -13,6 +13,8 @@ const client = new OpenAI({
 });
 
 const BASE_URL = process.env.WEBSITE_BASE_URL || "https://blue-prod-01.bessig.com";
+const VECTOR_STORE_ID =
+  process.env.OPENAI_VECTOR_STORE_ID || "vs_69c695df0a1881919287c9ed05b5cf6c";
 
 let kbChunks = [];
 let kbLastBuiltAt = 0;
@@ -433,6 +435,7 @@ app.get("/health", (_req, res) => {
     ok: true,
     kbChunks: kbChunks.length,
     kbLastBuiltAt,
+    vectorStoreId: VECTOR_STORE_ID,
   });
 });
 
@@ -463,7 +466,7 @@ app.post("/chat", async (req, res) => {
       ? topChunks
           .map((c, i) => {
             return [
-              `[Source ${i + 1}]`,
+              `[Website Source ${i + 1}]`,
               `URL: ${c.url}`,
               `Title: ${c.title || "N/A"}`,
               `H1: ${c.h1 || "N/A"}`,
@@ -478,43 +481,76 @@ app.post("/chat", async (req, res) => {
       content: String(msg.content || ""),
     }));
 
-    const completion = await client.chat.completions.create({
+    const inputBlocks = [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              "You are BAIS Bot for Blue Ash Industrial Supply.",
+              "",
+              "You help users with:",
+              "- products",
+              "- vendors",
+              "- machining knowledge",
+              "- vending solutions",
+              "- company information",
+              "",
+              "Rules:",
+              "- Use the website context when it is relevant.",
+              "- Use the file search knowledge base when it is relevant.",
+              "- Prefer grounded answers based on supplied context and retrieved files.",
+              "- If the answer is not clearly supported, say you are not sure.",
+              "- Do not make up policies, pricing, inventory, lead times, or contact details.",
+              "- Be concise, helpful, and professional.",
+              "- If useful, mention the relevant page or document topic used."
+            ].join("\n"),
+          },
+        ],
+      },
+      ...recentHistory.map((msg) => ({
+        role: msg.role,
+        content: [
+          {
+            type: "input_text",
+            text: msg.content,
+          },
+        ],
+      })),
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              "Customer question:",
+              message,
+              "",
+              "Website context:",
+              websiteContext,
+              "",
+              "Also search the document knowledge base when helpful."
+            ].join("\n"),
+          },
+        ],
+      },
+    ];
+
+    const response = await client.responses.create({
       model: "gpt-4.1-mini",
-      temperature: 0.2,
-      messages: [
+      input: inputBlocks,
+      tools: [
         {
-          role: "system",
-          content: [
-            "You are BAIS Bot for Blue Ash Industrial Supply.",
-            "",
-            "Rules:",
-            "- Answer using the website context when it is relevant.",
-            "- If the answer is not clearly supported by the website context, say that you are not sure based on the website.",
-            "- Do not make up policies, pricing, inventory, lead times, or contact details.",
-            "- Be concise and helpful.",
-            "- If useful, mention the page URL you used.",
-          ].join("\n"),
-        },
-        ...recentHistory,
-        {
-          role: "user",
-          content: [
-            "Customer question:",
-            message,
-            "",
-            "Website context:",
-            websiteContext,
-          ].join("\n"),
+          type: "file_search",
+          vector_store_ids: [VECTOR_STORE_ID],
         },
       ],
     });
 
     const answer =
-      completion.choices &&
-      completion.choices[0] &&
-      completion.choices[0].message &&
-      completion.choices[0].message.content
-        ? completion.choices[0].message.content
+      response && response.output_text
+        ? response.output_text
         : "Sorry, I couldn't generate a response.";
 
     res.json({
