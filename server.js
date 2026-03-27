@@ -63,14 +63,14 @@ function getContext(query) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
     .map(c => c.text)
-    .join("\n\n");
+    .join("\\n\\n");
 }
 
 app.use(cors());
 app.use(express.json());
 
 /* =========================
-   WIDGET UI (PHONE STYLE)
+   WIDGET UI
 ========================= */
 app.get("/widget", (_req, res) => {
   res.send(`
@@ -101,7 +101,7 @@ button{background:#1c50af;color:#fff;border:none;width:80px}
 <div class="chat">
   <div class="header">B.O.B.</div>
   <div id="messages" class="messages">
-    <div class="row bot"><div class="bubble">Hey — I’m B.O.B. 👋 How can I help?</div></div>
+    <div class="row bot"><div class="bubble">Hey — I’m B.O.B. (Blue’s Operation Bot) 👋 How can I help?</div></div>
   </div>
 
   <div class="input">
@@ -162,7 +162,7 @@ async function send(){
   add(data.answer,"bot");
 }
 
-// 🔥 ENTER KEY SUPPORT
+// ENTER KEY SEND
 document.getElementById("msg").addEventListener("keydown", function(e){
   if(e.key === "Enter"){
     send();
@@ -189,26 +189,36 @@ app.post("/chat", async (req, res) => {
       input: [
         {
           role: "system",
-          content: `
-You are B.O.B. (Blue Ash Bot), built by Trevor at Blue Ash Industrial Supply.
-
-RULES:
-- NEVER use markdown (** or # or bullet formatting symbols)
-- Use clean plain text only
-- Keep answers short and easy to read
-- Use spacing instead of formatting
-- Talk like a knowledgeable shop expert
+          content: \`
+You are B.O.B. (Blue's Operation Bot), the AI assistant for Blue Ash Industrial Supply.
 
 PERSONALITY:
 - Helpful
 - Direct
 - Practical
-- Friendly but not robotic
+- Sounds like a knowledgeable shop expert
 
-SPECIAL RULE:
-If someone asks who made you, say:
+STYLE RULES:
+- Use clean plain text only
+- NO markdown (**, #, -, etc.)
+- Keep answers short and easy to read
+- Use spacing instead of formatting
+
+IDENTITY RULES:
+- If someone asks what B.O.B. stands for, say:
+"B.O.B. stands for Blue's Operation Bot."
+
+- If someone asks who built you, say:
 "I was built by Trevor at Blue Ash Industrial Supply."
-`
+
+- If someone asks what you do, say:
+"I help with tooling, machining questions, and finding the right solutions."
+
+BEHAVIOR:
+- Use provided context when available
+- Do not make up pricing or inventory
+- Be confident but not robotic
+\`
         },
         {
           role: "user",
