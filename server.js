@@ -200,6 +200,7 @@ async function searchProducts(keyword) {
       if (href.includes("twitter.com")) return;
       if (href.includes("linkedin.com")) return;
       if (href.includes("google.com")) return;
+      if (!href.includes("/catalogue/")) return;
 
       const cleanHref = href.startsWith("/") ? href.slice(1) : href;
 
