@@ -184,7 +184,7 @@ async function searchProducts(keyword) {
     const results = [];
     const seen = new Set();
 
-    $("a").each((_, el) => {
+    $("a[href*='/catalogue/']").each((_, el) => {
       const href = $(el).attr("href");
       const title = $(el).text().replace(/\s+/g, " ").trim();
 
