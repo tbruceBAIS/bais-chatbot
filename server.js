@@ -87,7 +87,7 @@ function isJunkTitle(title) {
   const lower = title.toLowerCase();
 
   return (
-    title.length < 8 ||
+    title.length < 4 ||
     lower.includes("skip") ||
     lower.includes("facebook") ||
     lower.includes("twitter") ||
@@ -96,8 +96,11 @@ function isJunkTitle(title) {
     lower.includes("search") ||
     lower.includes("navigation") ||
     lower.includes("footer") ||
+    lower.includes("shopping cart") ||
+    lower.includes("cart") ||
     lower.includes("phone") ||
     lower.includes("road cincinnati") ||
+    lower.includes("google") ||
     lower.includes("all categories")
   );
 }
@@ -131,8 +134,8 @@ function looksProductIntent(message) {
     "parting",
     "reamer",
     "reaming",
-    "cutting fluid",
     "coolant",
+    "cutting fluid",
     "show me",
     "do you carry",
     "do you have",
@@ -144,6 +147,30 @@ function looksProductIntent(message) {
   ];
 
   return productKeywords.some((k) => lower.includes(k));
+}
+
+function extractProductQuery(message) {
+  const lowerMessage = String(message || "").toLowerCase();
+
+  if (lowerMessage.includes("drill")) return "drill";
+  if (lowerMessage.includes("insert")) return "insert";
+  if (lowerMessage.includes("end mill")) return "end mill";
+  if (lowerMessage.includes("mill")) return "mill";
+  if (lowerMessage.includes("tap")) return "tap";
+  if (lowerMessage.includes("thread")) return "thread";
+  if (lowerMessage.includes("ream")) return "reamer";
+  if (lowerMessage.includes("groov")) return "grooving";
+  if (lowerMessage.includes("part")) return "parting";
+  if (lowerMessage.includes("boring")) return "boring";
+  if (lowerMessage.includes("holder")) return "holder";
+  if (lowerMessage.includes("coolant")) return "coolant";
+  if (lowerMessage.includes("cutting fluid")) return "cutting fluid";
+  if (lowerMessage.includes("sandvik")) return "sandvik";
+  if (lowerMessage.includes("iscar")) return "iscar";
+  if (lowerMessage.includes("kyocera")) return "kyocera";
+  if (lowerMessage.includes("sgs")) return "sgs";
+
+  return String(message || "").trim();
 }
 
 async function searchProducts(keyword) {
@@ -166,6 +193,13 @@ async function searchProducts(keyword) {
       if (isJunkTitle(title)) return;
       if (href.includes("javascript")) return;
       if (href.startsWith("#")) return;
+      if (href.startsWith("tel:")) return;
+      if (href.startsWith("mailto:")) return;
+      if (href.includes("basket.php")) return;
+      if (href.includes("facebook.com")) return;
+      if (href.includes("twitter.com")) return;
+      if (href.includes("linkedin.com")) return;
+      if (href.includes("google.com")) return;
 
       const cleanHref = href.startsWith("/") ? href.slice(1) : href;
 
@@ -383,7 +417,8 @@ app.post("/chat", async (req, res) => {
 
     let productResults = [];
     if (looksProductIntent(message)) {
-      productResults = await searchProducts(message);
+      const productQuery = extractProductQuery(message);
+      productResults = await searchProducts(productQuery);
     }
 
     const response = await client.responses.create({
