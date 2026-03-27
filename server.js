@@ -152,17 +152,16 @@ function looksProductIntent(message) {
 function extractProductQuery(message) {
   const lowerMessage = String(message || "").toLowerCase();
 
-  if (lowerMessage.includes("drill")) return "drill";
-  if (lowerMessage.includes("insert")) return "insert";
-  if (lowerMessage.includes("end mill")) return "end mill";
-  if (lowerMessage.includes("mill")) return "mill";
-  if (lowerMessage.includes("tap")) return "tap";
-  if (lowerMessage.includes("thread")) return "thread";
-  if (lowerMessage.includes("ream")) return "reamer";
+  if (lowerMessage.includes("drill") || lowerMessage.includes("drilling")) return "drilling";
+  if (lowerMessage.includes("insert") || lowerMessage.includes("turning")) return "turning";
+  if (lowerMessage.includes("end mill")) return "milling";
+  if (lowerMessage.includes("mill") || lowerMessage.includes("milling")) return "milling";
+  if (lowerMessage.includes("tap") || lowerMessage.includes("thread")) return "threading";
+  if (lowerMessage.includes("ream")) return "reaming";
   if (lowerMessage.includes("groov")) return "grooving";
   if (lowerMessage.includes("part")) return "parting";
   if (lowerMessage.includes("boring")) return "boring";
-  if (lowerMessage.includes("holder")) return "holder";
+  if (lowerMessage.includes("holder")) return "tool holder";
   if (lowerMessage.includes("coolant")) return "coolant";
   if (lowerMessage.includes("cutting fluid")) return "cutting fluid";
   if (lowerMessage.includes("sandvik")) return "sandvik";
