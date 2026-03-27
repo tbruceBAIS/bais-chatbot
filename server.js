@@ -34,7 +34,7 @@ async function buildKnowledgeBase() {
 
   for (const url of urls) {
     try {
-      const res = await axios.get(url);
+      const res = await axios.get(url, { timeout: 20000 });
       const $ = cheerio.load(res.data);
 
       $("script, style, noscript").remove();
@@ -48,7 +48,7 @@ async function buildKnowledgeBase() {
 
       console.log("Indexed:", url);
     } catch (err) {
-      console.log("Failed:", url);
+      console.log("Failed:", url, err.message);
     }
   }
 
@@ -83,6 +83,19 @@ function cleanPlainText(text) {
 app.use(cors());
 app.use(express.json());
 
+app.get("/", (_req, res) => {
+  res.json({ ok: true, service: "B.O.B." });
+});
+
+app.get("/health", (_req, res) => {
+  res.json({
+    ok: true,
+    kbChunks: kbChunks.length,
+    baseUrl: BASE_URL,
+    vectorStoreId: VECTOR_STORE_ID,
+  });
+});
+
 /* =========================
    WIDGET UI
 ========================= */
@@ -93,19 +106,22 @@ app.get("/widget", (_req, res) => {
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body{margin:0;font-family:Arial;background:#eef1f6}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#eef1f6}
 .chat{width:100%;max-width:390px;height:520px;margin:auto;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;background:#f3f4f8}
 .header{background:#1c50af;color:#fff;padding:14px;text-align:center;font-weight:bold}
 .messages{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
 .row{display:flex}
 .user{justify-content:flex-end}
 .bot{justify-content:flex-start}
-.bubble{max-width:80%;padding:10px 14px;border-radius:18px;font-size:14px;white-space:pre-wrap}
-.user .bubble{background:#1c50af;color:#fff}
-.bot .bubble{background:#fff;border:1px solid #ddd}
-.input{display:flex;border-top:1px solid #ddd}
-input{flex:1;border:none;padding:12px}
-button{background:#1c50af;color:#fff;border:none;width:80px}
+.bubble{max-width:80%;padding:10px 14px;border-radius:18px;font-size:14px;white-space:pre-wrap;line-height:1.45}
+.user .bubble{background:#1c50af;color:#fff;border-bottom-right-radius:6px}
+.bot .bubble{background:#fff;border:1px solid #ddd;border-bottom-left-radius:6px}
+.input{display:flex;border-top:1px solid #ddd;background:#fff}
+input{flex:1;border:none;padding:12px;font-size:14px;outline:none}
+button{background:#1c50af;color:#fff;border:none;width:80px;cursor:pointer}
+button:hover{background:#17428f}
+.dot{height:6px;width:6px;background:#999;border-radius:50%;display:inline-block;margin:2px;animation:blink 1.4s infinite}
+@keyframes blink{0%{opacity:.2}20%{opacity:1}100%{opacity:.2}}
 </style>
 </head>
 <body>
@@ -113,17 +129,19 @@ button{background:#1c50af;color:#fff;border:none;width:80px}
 <div class="chat">
   <div class="header">B.O.B.</div>
   <div id="messages" class="messages">
-    <div class="row bot"><div class="bubble">Hey — I’m B.O.B. 👋</div></div>
+    <div class="row bot"><div class="bubble">Hey — I’m B.O.B. (Blue's Operation Bot) 👋 How can I help?</div></div>
   </div>
 
   <div class="input">
     <input id="msg" placeholder="Ask me anything..." />
-    <button onclick="send()">Send</button>
+    <button id="sendBtn" onclick="send()">Send</button>
   </div>
 </div>
 
 <script>
 const messages = document.getElementById("messages");
+const input = document.getElementById("msg");
+const sendBtn = document.getElementById("sendBtn");
 
 function add(text, role){
   const row = document.createElement("div");
@@ -138,25 +156,57 @@ function add(text, role){
   messages.scrollTop = messages.scrollHeight;
 }
 
+function typing(){
+  const row = document.createElement("div");
+  row.className = "row bot";
+  row.id = "typing";
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.innerHTML = "<span class='dot'></span><span class='dot'></span><span class='dot'></span>";
+
+  row.appendChild(bubble);
+  messages.appendChild(row);
+  messages.scrollTop = messages.scrollHeight;
+}
+
 async function send(){
-  const input = document.getElementById("msg");
   const text = input.value.trim();
   if(!text) return;
 
   add(text,"user");
-  input.value="";
+  input.value = "";
+  input.disabled = true;
+  sendBtn.disabled = true;
 
-  const res = await fetch("/chat",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({message:text})
-  });
+  typing();
 
-  const data = await res.json();
-  add(data.answer,"bot");
+  try {
+    const res = await fetch("/chat",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({message:text})
+    });
+
+    const data = await res.json();
+
+    const typingEl = document.getElementById("typing");
+    if (typingEl) typingEl.remove();
+
+    add(data.answer || "Something went wrong.","bot");
+  } catch (err) {
+    const typingEl = document.getElementById("typing");
+    if (typingEl) typingEl.remove();
+
+    add("Something went wrong.","bot");
+  } finally {
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
+  }
 }
 
-document.getElementById("msg").addEventListener("keydown", function(e){
+input.addEventListener("keydown", function(e){
   if(e.key === "Enter"){
     send();
   }
@@ -169,14 +219,18 @@ document.getElementById("msg").addEventListener("keydown", function(e){
 });
 
 /* =========================
-   PRODUCT SEARCH (FIXED)
+   PRODUCT SEARCH
 ========================= */
 app.get("/product-search", async (req, res) => {
   try {
     const kw = String(req.query.kw || "").trim();
 
+    if (!kw) {
+      return res.json({ results: [] });
+    }
+
     const searchUrl = `${BASE_URL}/showgroups.php?kw=${encodeURIComponent(kw)}`;
-    const page = await axios.get(searchUrl);
+    const page = await axios.get(searchUrl, { timeout: 20000 });
     const $ = cheerio.load(page.data);
 
     const results = [];
@@ -184,9 +238,25 @@ app.get("/product-search", async (req, res) => {
 
     $("a").each((_, el) => {
       const href = $(el).attr("href");
-      const title = $(el).text().trim();
+      const title = $(el).text().replace(/\s+/g, " ").trim();
 
       if (!href || !title) return;
+
+      if (title.length < 8) return;
+
+      const lowerTitle = title.toLowerCase();
+
+      if (lowerTitle.includes("skip")) return;
+      if (lowerTitle.includes("facebook")) return;
+      if (lowerTitle.includes("twitter")) return;
+      if (lowerTitle.includes("linkedin")) return;
+      if (lowerTitle.includes("email")) return;
+      if (lowerTitle.includes("search")) return;
+      if (lowerTitle.includes("navigation")) return;
+      if (lowerTitle.includes("footer")) return;
+
+      if (href.includes("javascript")) return;
+      if (href.startsWith("#")) return;
 
       const cleanHref = href.startsWith("/") ? href.slice(1) : href;
 
@@ -194,15 +264,19 @@ app.get("/product-search", async (req, res) => {
         ? href
         : `${BASE_URL}/${cleanHref}`;
 
-      if (!seen.has(fullUrl)) {
-        seen.add(fullUrl);
-        results.push({ title, url: fullUrl });
-      }
+      if (seen.has(fullUrl)) return;
+
+      seen.add(fullUrl);
+
+      results.push({
+        title,
+        url: fullUrl,
+      });
     });
 
-    res.json({ results: results.slice(0, 10) });
+    res.json({ results: results.slice(0, 8) });
   } catch (err) {
-    console.log(err);
+    console.log("Product search error:", err.message);
     res.json({ results: [] });
   }
 });
@@ -212,19 +286,29 @@ app.get("/product-search", async (req, res) => {
 ========================= */
 app.post("/chat", async (req, res) => {
   try {
-    const message = req.body.message;
+    const message = String(req.body.message || "").trim();
 
     if (!message) {
       return res.json({ answer: "Ask me something." });
     }
 
-    if (message.toLowerCase().includes("bob stand")) {
+    const lowerMessage = message.toLowerCase();
+
+    if (
+      lowerMessage.includes("bob stand") ||
+      lowerMessage.includes("b.o.b. stand") ||
+      lowerMessage.includes("what does bob mean")
+    ) {
       return res.json({
         answer: "B.O.B. stands for Blue's Operation Bot.",
       });
     }
 
-    if (message.toLowerCase().includes("who made")) {
+    if (
+      lowerMessage.includes("who made you") ||
+      lowerMessage.includes("who built you") ||
+      lowerMessage.includes("who created you")
+    ) {
       return res.json({
         answer: "I was built by Trevor at Blue Ash Industrial Supply.",
       });
@@ -238,7 +322,7 @@ app.post("/chat", async (req, res) => {
         {
           role: "system",
           content:
-            "You are B.O.B., a machining and tooling assistant. Answer clearly and simply. No markdown.",
+            "You are B.O.B., Blue's Operation Bot for Blue Ash Industrial Supply. Answer clearly and simply in plain text. Do not use markdown. Keep answers short, practical, and helpful. If asked what B.O.B. stands for, say Blue's Operation Bot. If asked who built you, say Trevor at Blue Ash Industrial Supply built you.",
         },
         {
           role: "user",
@@ -253,13 +337,25 @@ app.post("/chat", async (req, res) => {
       ],
     });
 
-    let answer = response.output_text || "No response.";
+    let answer = "No response.";
+
+    try {
+      if (response.output_text) {
+        answer = response.output_text;
+      } else if (response.output) {
+        answer = response.output
+          .map((o) => (o.content || []).map((c) => c.text || "").join(""))
+          .join("\n");
+      }
+    } catch (err) {
+      console.log("Parse error:", err.message);
+    }
 
     answer = cleanPlainText(answer);
 
     res.json({ answer });
   } catch (err) {
-    console.log(err);
+    console.log("Chat error:", err.message);
     res.json({ answer: "Error occurred." });
   }
 });
@@ -269,5 +365,10 @@ app.post("/chat", async (req, res) => {
 ========================= */
 app.listen(port, async () => {
   console.log("Running on port", port);
-  await buildKnowledgeBase();
+
+  try {
+    await buildKnowledgeBase();
+  } catch (err) {
+    console.log("KB build failed:", err.message);
+  }
 });
