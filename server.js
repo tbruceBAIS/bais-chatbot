@@ -609,7 +609,7 @@ productResults.forEach(p => {
     style="
       display:inline-flex;
       align-items:center;
-      justify-content:center;
+      justify-content:flex-start;
       background:#eef3ff;
       color:#1c50af;
       padding:6px 12px;
@@ -618,6 +618,7 @@ productResults.forEach(p => {
       text-decoration:none;
       font-size:12px;
       border:1px solid #d0dcff;
+      text-align:left;
     ">
     ${p.title}
   </a>`;
