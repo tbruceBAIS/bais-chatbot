@@ -430,13 +430,49 @@ if (looksProductIntent(message)) {
   const lowerMessage = message.toLowerCase();
 
   if (productQuery === "drilling") {
-  productResults = [
-    { title: "Drilling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6201" },
-    { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" },
-    { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" },
-    { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" },
-    { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
-  ];
+  if (lowerMessage.includes("drill insert") || lowerMessage.includes("drill inserts")) {
+    productResults = [
+      { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("solid carbide drill") ||
+    lowerMessage.includes("solid carbide drills") ||
+    lowerMessage.includes("carbide drill") ||
+    lowerMessage.includes("carbide drills")
+  ) {
+    productResults = [
+      { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("hss drill") ||
+    lowerMessage.includes("co drill") ||
+    lowerMessage.includes("hss/co drill") ||
+    lowerMessage.includes("hss/co drills")
+  ) {
+    productResults = [
+      { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("center drill") ||
+    lowerMessage.includes("spot drill") ||
+    lowerMessage.includes("center and spot")
+  ) {
+    productResults = [
+      { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+    ];
+  }
+  else {
+    productResults = [
+      { title: "Drilling", url: "https://blue-prod-01.bessig.com/catalogue/group/145" },
+      { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" },
+      { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" },
+      { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" },
+      { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+    ];
+  }
 }
   else if (productQuery === "turning") {
     productResults = [
