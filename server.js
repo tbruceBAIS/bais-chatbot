@@ -430,88 +430,178 @@ if (looksProductIntent(message)) {
   const lowerMessage = message.toLowerCase();
 
   if (productQuery === "drilling") {
-  if (lowerMessage.includes("drill insert") || lowerMessage.includes("drill inserts")) {
-    productResults = [
-      { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
-    ];
+    if (lowerMessage.includes("drill insert") || lowerMessage.includes("drill inserts")) {
+      productResults = [
+        { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+      ];
+    }
+    else if (
+      lowerMessage.includes("solid carbide drill") ||
+      lowerMessage.includes("solid carbide drills") ||
+      lowerMessage.includes("carbide drill") ||
+      lowerMessage.includes("carbide drills")
+    ) {
+      productResults = [
+        { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+      ];
+    }
+    else if (
+      lowerMessage.includes("hss drill") ||
+      lowerMessage.includes("hss drills") ||
+      lowerMessage.includes("co drill") ||
+      lowerMessage.includes("co drills") ||
+      lowerMessage.includes("hss/co drill") ||
+      lowerMessage.includes("hss/co drills")
+    ) {
+      productResults = [
+        { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+      ];
+    }
+    else if (
+      lowerMessage.includes("center drill") ||
+      lowerMessage.includes("center drills") ||
+      lowerMessage.includes("spot drill") ||
+      lowerMessage.includes("spot drills") ||
+      lowerMessage.includes("center and spot")
+    ) {
+      productResults = [
+        { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+      ];
+    }
+    else {
+      productResults = [
+        { title: "Drilling", url: "https://blue-prod-01.bessig.com/catalogue/group/145" },
+        { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" },
+        { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" },
+        { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" },
+        { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
+      ];
+    }
   }
-  else if (
-    lowerMessage.includes("solid carbide drill") ||
-    lowerMessage.includes("solid carbide drills") ||
-    lowerMessage.includes("carbide drill") ||
-    lowerMessage.includes("carbide drills")
-  ) {
-    productResults = [
-      { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
-    ];
-  }
-  else if (
-    lowerMessage.includes("hss drill") ||
-    lowerMessage.includes("co drill") ||
-    lowerMessage.includes("hss/co drill") ||
-    lowerMessage.includes("hss/co drills")
-  ) {
-    productResults = [
-      { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
-    ];
-  }
-  else if (
-    lowerMessage.includes("center drill") ||
-    lowerMessage.includes("spot drill") ||
-    lowerMessage.includes("center and spot")
-  ) {
-    productResults = [
-      { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
-    ];
-  }
-  else {
-    productResults = [
-      { title: "Drilling", url: "https://blue-prod-01.bessig.com/catalogue/group/145" },
-      { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" },
-      { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" },
-      { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" },
-      { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill" }
-    ];
-  }
-}
+
   else if (productQuery === "turning") {
-    productResults = [
-      { title: "Turning", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/5" },
-      { title: "External Turning", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6101" },
-      { title: "Internal Turning", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6102" }
-    ];
+    if (lowerMessage.includes("external turning")) {
+      productResults = [
+        { title: "External Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6101" }
+      ];
+    }
+    else if (
+      lowerMessage.includes("internal turning") ||
+      lowerMessage.includes("boring bar") ||
+      lowerMessage.includes("boring bars")
+    ) {
+      productResults = [
+        { title: "Internal Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6102" }
+      ];
+    }
+    else if (
+      lowerMessage.includes("insert") ||
+      lowerMessage.includes("inserts")
+    ) {
+      productResults = [
+        { title: "Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6100" },
+        { title: "External Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6101" },
+        { title: "Internal Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6102" }
+      ];
+    }
+    else {
+      productResults = [
+        { title: "Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6100" },
+        { title: "External Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6101" },
+        { title: "Internal Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6102" }
+      ];
+    }
   }
+
   else if (productQuery === "threading") {
-    productResults = [
-      { title: "Threading", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6300" },
-      { title: "Thread Turning", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6104" }
-    ];
+    if (
+      lowerMessage.includes("thread turning") ||
+      lowerMessage.includes("single point thread")
+    ) {
+      productResults = [
+        { title: "Thread Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6104" }
+      ];
+    }
+    else if (
+      lowerMessage.includes("tap") ||
+      lowerMessage.includes("taps")
+    ) {
+      productResults = [
+        { title: "Threading", url: "https://blue-prod-01.bessig.com/catalogue/group/6300" }
+      ];
+    }
+    else {
+      productResults = [
+        { title: "Threading", url: "https://blue-prod-01.bessig.com/catalogue/group/6300" },
+        { title: "Thread Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6104" }
+      ];
+    }
   }
+
   else if (productQuery === "milling") {
-    productResults = [
-      { title: "Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6000" }
-    ];
+    if (
+      lowerMessage.includes("end mill") ||
+      lowerMessage.includes("end mills")
+    ) {
+      productResults = [
+        { title: "Milling", url: "https://blue-prod-01.bessig.com/catalogue/group/6000" }
+      ];
+    }
+    else if (
+      lowerMessage.includes("face mill") ||
+      lowerMessage.includes("face mills")
+    ) {
+      productResults = [
+        { title: "Milling", url: "https://blue-prod-01.bessig.com/catalogue/group/6000" }
+      ];
+    }
+    else {
+      productResults = [
+        { title: "Milling", url: "https://blue-prod-01.bessig.com/catalogue/group/6000" }
+      ];
+    }
   }
+
   else if (productQuery === "reaming") {
-    productResults = [
-      { title: "Reaming", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6202" }
-    ];
+    if (
+      lowerMessage.includes("reamer") ||
+      lowerMessage.includes("reamers")
+    ) {
+      productResults = [
+        { title: "Reaming", url: "https://blue-prod-01.bessig.com/catalogue/group/6202" }
+      ];
+    }
+    else {
+      productResults = [
+        { title: "Reaming", url: "https://blue-prod-01.bessig.com/catalogue/group/6202" }
+      ];
+    }
   }
+
   else if (productQuery === "grooving" || productQuery === "parting") {
-    productResults = [
-      { title: "Grooving & Parting", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6103" }
-    ];
+    if (
+      lowerMessage.includes("parting") ||
+      lowerMessage.includes("cutoff")
+    ) {
+      productResults = [
+        { title: "Grooving & Parting", url: "https://blue-prod-01.bessig.com/catalogue/group/6103" }
+      ];
+    }
+    else if (
+      lowerMessage.includes("grooving") ||
+      lowerMessage.includes("groove")
+    ) {
+      productResults = [
+        { title: "Grooving & Parting", url: "https://blue-prod-01.bessig.com/catalogue/group/6103" }
+      ];
+    }
+    else {
+      productResults = [
+        { title: "Grooving & Parting", url: "https://blue-prod-01.bessig.com/catalogue/group/6103" }
+      ];
+    }
   }
-  else if (
-    lowerMessage.includes("insert") ||
-    lowerMessage.includes("inserts")
-  ) {
-    productResults = [
-      { title: "Turning", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6100" },
-      { title: "External Turning", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6101" },
-      { title: "Internal Turning", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6102" }
-    ];
-  }
+
   else if (
     lowerMessage.includes("holder") ||
     lowerMessage.includes("holders")
@@ -520,6 +610,7 @@ if (looksProductIntent(message)) {
       { title: "Tooling Systems", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/7000" }
     ];
   }
+
   else if (
     lowerMessage.includes("collet") ||
     lowerMessage.includes("collets")
@@ -528,23 +619,26 @@ if (looksProductIntent(message)) {
       { title: "Tooling Systems", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/7000" }
     ];
   }
+
   else if (
     lowerMessage.includes("deburr") ||
     lowerMessage.includes("broach")
   ) {
     productResults = [
-      { title: "Deburring & Broaching", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6600" }
+      { title: "Deburring & Broaching", url: "https://blue-prod-01.bessig.com/catalogue/group/6600" }
     ];
   }
+
   else if (
     lowerMessage.includes("abrasive") ||
     lowerMessage.includes("abrasives") ||
     lowerMessage.includes("finishing")
   ) {
     productResults = [
-      { title: "Abrasives & Finishing", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/202" }
+      { title: "Abrasives & Finishing", url: "https://blue-prod-01.bessig.com/catalogue/group/202" }
     ];
   }
+
   else if (
     lowerMessage.includes("fastener") ||
     lowerMessage.includes("fasteners")
@@ -553,6 +647,7 @@ if (looksProductIntent(message)) {
       { title: "Fasteners", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/8000" }
     ];
   }
+
   else if (
     lowerMessage.includes("saw") ||
     lowerMessage.includes("saws")
@@ -561,6 +656,7 @@ if (looksProductIntent(message)) {
       { title: "Saws", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/5000" }
     ];
   }
+
   else if (
     lowerMessage.includes("power tool") ||
     lowerMessage.includes("power tools")
@@ -569,6 +665,7 @@ if (looksProductIntent(message)) {
       { title: "Power Tools", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/4000" }
     ];
   }
+
   else if (
     lowerMessage.includes("hand tool") ||
     lowerMessage.includes("hand tools")
@@ -577,6 +674,7 @@ if (looksProductIntent(message)) {
       { title: "Hand Tools", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/3000" }
     ];
   }
+
   else if (
     lowerMessage.includes("measuring") ||
     lowerMessage.includes("inspection") ||
@@ -586,6 +684,7 @@ if (looksProductIntent(message)) {
       { title: "Testing, Measuring & Inspection", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/9000" }
     ];
   }
+
   else if (
     lowerMessage.includes("clamp") ||
     lowerMessage.includes("workholding")
@@ -594,6 +693,7 @@ if (looksProductIntent(message)) {
       { title: "Clamping, Positioning & Workholding", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/10000" }
     ];
   }
+
   else {
     productResults = await searchProducts(productQuery);
   }
