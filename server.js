@@ -431,7 +431,7 @@ if (looksProductIntent(message)) {
 
   if (productQuery === "drilling") {
     productResults = [
-      { title: "Drilling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/145" }
+      { title: "Drilling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6201" }
     ];
   }
   else if (productQuery === "turning") {
