@@ -292,7 +292,7 @@ function add(text, role){
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  bubble.innerText = text;
+  bubble.innerHTML = text;
 
   row.appendChild(bubble);
   messages.appendChild(row);
@@ -602,11 +602,16 @@ if (looksProductIntent(message)) {
     answer = cleanPlainText(answer);
 
     if (productResults.length > 0) {
-      let productText = "\n\nHere are some options from our site:\n\n";
+      let productText = "\n\nHere are some relevant options:\n\n";
 
-      productResults.slice(0, 3).forEach((p) => {
-        productText += `${p.title}\n${p.url}\n\n`;
-      });
+productResults.forEach(p => {
+  productText += `<a href="${p.url}" target="_blank" 
+    style="display:inline-block;background:#1c50af;color:#fff;
+    padding:6px 10px;border-radius:6px;margin:4px 4px 0 0;
+    text-decoration:none;font-size:13px;">
+    ${p.title}
+  </a>`;
+});
 
       answer += productText;
     }
