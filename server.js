@@ -607,10 +607,12 @@ if (looksProductIntent(message)) {
 productResults.forEach(p => {
   productText += `<a href="${p.url}" target="_blank"
     style="
-      display:inline-block;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
       background:#eef3ff;
       color:#1c50af;
-      padding:5px 10px;
+      padding:6px 12px;
       border-radius:14px;
       margin:4px 6px 0 0;
       text-decoration:none;
