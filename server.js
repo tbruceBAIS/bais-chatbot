@@ -618,10 +618,9 @@ productResults.forEach(p => {
       display:inline-flex;
       align-items:center;
       justify-content:flex-start;
-      min-width:78px;
       background:#eef3ff;
       color:#1c50af;
-      padding:6px 12px;
+      padding:6px 10px;
       border-radius:14px;
       margin:4px 6px 0 0;
       text-decoration:none;
