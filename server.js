@@ -605,10 +605,18 @@ if (looksProductIntent(message)) {
       let productText = "\n\nHere are some relevant options:\n\n";
 
 productResults.forEach(p => {
-  productText += `<a href="${p.url}" target="_blank" 
-    style="display:inline-block;background:#1c50af;color:#fff;
-    padding:6px 10px;border-radius:6px;margin:4px 4px 0 0;
-    text-decoration:none;font-size:13px;">
+  productText += `<a href="${p.url}" target="_blank"
+    style="
+      display:inline-block;
+      background:#eef3ff;
+      color:#1c50af;
+      padding:5px 10px;
+      border-radius:14px;
+      margin:4px 6px 0 0;
+      text-decoration:none;
+      font-size:12px;
+      border:1px solid #d0dcff;
+    ">
     ${p.title}
   </a>`;
 });
