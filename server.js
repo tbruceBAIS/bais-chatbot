@@ -430,10 +430,14 @@ if (looksProductIntent(message)) {
   const lowerMessage = message.toLowerCase();
 
   if (productQuery === "drilling") {
-    productResults = [
-      { title: "Drilling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6201" }
-    ];
-  }
+  productResults = [
+    { title: "Drilling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6201" },
+    { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" },
+    { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" },
+    { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" },
+    { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
+  ];
+}
   else if (productQuery === "turning") {
     productResults = [
       { title: "Turning", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/5" },
