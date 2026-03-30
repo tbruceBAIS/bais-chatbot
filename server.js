@@ -412,8 +412,6 @@ const lowerMessage = message.toLowerCase();
       return res.json({ answer: "Ask me something." });
     }
 
-    const lowerMessage = message.toLowerCase();
-
     const isGreeting =
   lowerMessage === "hi" ||
   lowerMessage === "hello" ||
