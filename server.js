@@ -256,7 +256,15 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#eef1f6}
 .row{display:flex}
 .user{justify-content:flex-end}
 .bot{justify-content:flex-start}
-.bubble{max-width:80%;padding:10px 14px;border-radius:18px;font-size:14px;white-space:pre-wrap;line-height:1.45}
+.bubble {
+  display:inline-block;
+  max-width:80%;
+  padding:10px 14px;
+  border-radius:18px;
+  font-size:14px;
+  white-space:pre-wrap;
+  line-height:1.45;
+}
 .user .bubble{background:#1c50af;color:#fff;border-bottom-right-radius:6px}
 .bot .bubble{background:#fff;border:1px solid #ddd;border-bottom-left-radius:6px}
 .input{display:flex;border-top:1px solid #ddd;background:#fff}
