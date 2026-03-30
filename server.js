@@ -419,23 +419,134 @@ app.post("/chat", async (req, res) => {
 
 if (looksProductIntent(message)) {
   let productQuery = extractProductQuery(message);
+  const lowerMessage = message.toLowerCase();
 
   if (productQuery === "drilling") {
     productResults = [
-      {
-        title: "Solid Carbide Drills",
-        url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill"
-      },
-      {
-        title: "Indexable Drill Bodies",
-        url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill"
-      },
-      {
-        title: "Drill Inserts",
-        url: "https://blue-prod-01.bessig.com/showgroups.php?kw=drill"
-      }
+      { title: "Drilling", url: "https://blue-prod-01.bessig.com/catalogue/group/145" }
     ];
-  } else {
+  }
+  else if (productQuery === "turning") {
+    productResults = [
+      { title: "Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/5" },
+      { title: "External Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6101" },
+      { title: "Internal Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6102" }
+    ];
+  }
+  else if (productQuery === "threading") {
+    productResults = [
+      { title: "Threading", url: "https://blue-prod-01.bessig.com/catalogue/group/6300" },
+      { title: "Thread Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6104" }
+    ];
+  }
+  else if (productQuery === "milling") {
+    productResults = [
+      { title: "Milling", url: "https://blue-prod-01.bessig.com/catalogue/group/6000" }
+    ];
+  }
+  else if (productQuery === "reaming") {
+    productResults = [
+      { title: "Reaming", url: "https://blue-prod-01.bessig.com/catalogue/group/6202" }
+    ];
+  }
+  else if (productQuery === "grooving" || productQuery === "parting") {
+    productResults = [
+      { title: "Grooving & Parting", url: "https://blue-prod-01.bessig.com/catalogue/group/6103" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("insert") ||
+    lowerMessage.includes("inserts")
+  ) {
+    productResults = [
+      { title: "Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6100" },
+      { title: "External Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6101" },
+      { title: "Internal Turning", url: "https://blue-prod-01.bessig.com/catalogue/group/6102" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("holder") ||
+    lowerMessage.includes("holders")
+  ) {
+    productResults = [
+      { title: "Tooling Systems", url: "https://blue-prod-01.bessig.com/catalogue/group/7000" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("collet") ||
+    lowerMessage.includes("collets")
+  ) {
+    productResults = [
+      { title: "Tooling Systems", url: "https://blue-prod-01.bessig.com/catalogue/group/7000" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("deburr") ||
+    lowerMessage.includes("broach")
+  ) {
+    productResults = [
+      { title: "Deburring & Broaching", url: "https://blue-prod-01.bessig.com/catalogue/group/6600" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("abrasive") ||
+    lowerMessage.includes("abrasives") ||
+    lowerMessage.includes("finishing")
+  ) {
+    productResults = [
+      { title: "Abrasives & Finishing", url: "https://blue-prod-01.bessig.com/catalogue/group/202" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("fastener") ||
+    lowerMessage.includes("fasteners")
+  ) {
+    productResults = [
+      { title: "Fasteners", url: "https://blue-prod-01.bessig.com/catalogue/group/8000" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("saw") ||
+    lowerMessage.includes("saws")
+  ) {
+    productResults = [
+      { title: "Saws", url: "https://blue-prod-01.bessig.com/catalogue/group/5000" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("power tool") ||
+    lowerMessage.includes("power tools")
+  ) {
+    productResults = [
+      { title: "Power Tools", url: "https://blue-prod-01.bessig.com/catalogue/group/4000" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("hand tool") ||
+    lowerMessage.includes("hand tools")
+  ) {
+    productResults = [
+      { title: "Hand Tools", url: "https://blue-prod-01.bessig.com/catalogue/group/3000" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("measuring") ||
+    lowerMessage.includes("inspection") ||
+    lowerMessage.includes("testing")
+  ) {
+    productResults = [
+      { title: "Testing, Measuring & Inspection", url: "https://blue-prod-01.bessig.com/catalogue/group/9000" }
+    ];
+  }
+  else if (
+    lowerMessage.includes("clamp") ||
+    lowerMessage.includes("workholding")
+  ) {
+    productResults = [
+      { title: "Clamping, Positioning & Workholding", url: "https://blue-prod-01.bessig.com/catalogue/group/10000" }
+    ];
+  }
+  else {
     productResults = await searchProducts(productQuery);
   }
 }
