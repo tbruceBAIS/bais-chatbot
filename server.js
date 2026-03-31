@@ -1088,7 +1088,7 @@ else if (
   }
 }
 
-   else if (
+else if (
   lowerMessage.includes("fastener") ||
   lowerMessage.includes("fasteners") ||
   lowerMessage.includes("anchor") ||
@@ -1228,6 +1228,15 @@ else if (
   }
 
   else if (
+    lowerMessage.includes("retaining ring") ||
+    lowerMessage.includes("retaining rings")
+  ) {
+    productResults = [
+      { title: "Retaining Rings/Washers", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/760" }
+    ];
+  }
+
+  else if (
     lowerMessage.includes("washer") ||
     lowerMessage.includes("washers") ||
     lowerMessage.includes("ring") ||
@@ -1244,15 +1253,6 @@ else if (
   ) {
     productResults = [
       { title: "Clamps", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/468" }
-    ];
-  }
-
-  else if (
-    lowerMessage.includes("retaining ring") ||
-    lowerMessage.includes("retaining rings")
-  ) {
-    productResults = [
-      { title: "Retaining Rings/Washers", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/760" }
     ];
   }
 
