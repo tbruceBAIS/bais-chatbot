@@ -109,33 +109,49 @@ function looksProductIntent(message) {
   const lower = String(message || "").toLowerCase();
 
   const productKeywords = [
-    "drill",
-    "drills",
-    "insert",
-    "inserts",
-    "mill",
-    "mills",
-    "end mill",
-    "tap",
-    "taps",
-    "tool",
-    "tools",
-    "holder",
-    "holders",
-    "sandvik",
-    "iscar",
-    "kyocera",
-    "sgs",
-    "carbide",
-    "thread",
-    "threading",
-    "boring",
-    "grooving",
-    "parting",
-    "reamer",
-    "reaming",
-    "coolant",
-    "cutting fluid",
+    "drill", "drills", "drilling",
+    "insert", "inserts",
+    "mill", "mills", "milling", "end mill", "end mills",
+    "tap", "taps",
+    "thread", "threading", "thread mill", "thread mills",
+    "turning", "boring", "grooving", "parting",
+    "reamer", "reamers", "reaming",
+    "tool", "tools", "holder", "holders",
+    "collet", "collets",
+    "coolant", "cutting fluid",
+
+    "abrasive", "abrasives", "grinding wheel", "grinding wheels",
+    "cutoff wheel", "cutoff wheels", "flap wheel", "flap wheels",
+
+    "fastener", "fasteners",
+    "nut", "nuts", "bolt", "bolts", "screw", "screws",
+    "washer", "washers", "anchor", "anchors",
+    "rivet", "rivets", "threaded rod", "threaded rods",
+    "stud", "studs",
+
+    "saw", "saws", "hole saw", "hole saws",
+    "power tool", "power tools", "power drill", "power drills",
+    "wrench", "wrenches", "pliers", "screwdriver", "socket", "ratchet",
+
+    "gage", "gages", "gauge", "gauges",
+    "inspection", "measuring", "measurement",
+    "clamp", "clamps", "vise", "vises", "workholding",
+
+    "adhesive", "adhesives", "sealant", "sealants", "tape", "tapes",
+    "paint", "spray paint", "primer", "primers",
+    "hinge", "hinges", "lock", "locks", "hardware",
+    "ppe", "safety", "first aid", "fire protection",
+
+    "hvac", "filter", "filters", "air conditioner", "air conditioners",
+    "hydraulic", "hydraulics", "hose", "hoses", "pump", "pumps",
+    "janitorial", "sanitation", "cleaner", "cleaners",
+    "electrical", "lighting", "extension cord", "extension cords",
+    "lubrication", "lubricant", "lubricants",
+
+    "lathe", "lathes", "milling machine", "milling machines",
+    "shelving", "storage rack", "storage racks",
+    "material handling", "tool storage", "workbench", "work bench",
+
     "show me",
     "do you carry",
     "do you have",
@@ -161,9 +177,152 @@ function extractProductQuery(message) {
   if (lowerMessage.includes("groov")) return "grooving";
   if (lowerMessage.includes("part")) return "parting";
   if (lowerMessage.includes("boring")) return "boring";
-  if (lowerMessage.includes("holder")) return "tool holder";
-  if (lowerMessage.includes("coolant")) return "coolant";
-  if (lowerMessage.includes("cutting fluid")) return "cutting fluid";
+  if (lowerMessage.includes("tooling") || lowerMessage.includes("collet") || lowerMessage.includes("tool holder")) return "tooling";
+
+  if (
+    lowerMessage.includes("abrasive") ||
+    lowerMessage.includes("grinding wheel") ||
+    lowerMessage.includes("cutoff wheel") ||
+    lowerMessage.includes("flap wheel")
+  ) return "abrasives";
+
+  if (
+    lowerMessage.includes("fastener") ||
+    lowerMessage.includes("nut") ||
+    lowerMessage.includes("bolt") ||
+    lowerMessage.includes("screw") ||
+    lowerMessage.includes("washer") ||
+    lowerMessage.includes("anchor") ||
+    lowerMessage.includes("rivet") ||
+    lowerMessage.includes("threaded rod") ||
+    lowerMessage.includes("stud")
+  ) return "fasteners";
+
+  if (
+    lowerMessage.includes("hole saw") ||
+    lowerMessage.includes("bandsaw") ||
+    lowerMessage.includes("band saw") ||
+    lowerMessage.includes("circular saw") ||
+    lowerMessage.includes("reciprocating saw") ||
+    lowerMessage.includes("saws")
+  ) return "saws";
+
+  if (
+    lowerMessage.includes("power tool") ||
+    lowerMessage.includes("power drill") ||
+    lowerMessage.includes("router") ||
+    lowerMessage.includes("nibbler") ||
+    lowerMessage.includes("punch press")
+  ) return "power tools";
+
+  if (
+    lowerMessage.includes("hand tool") ||
+    lowerMessage.includes("wrench") ||
+    lowerMessage.includes("pliers") ||
+    lowerMessage.includes("screwdriver") ||
+    lowerMessage.includes("socket") ||
+    lowerMessage.includes("ratchet")
+  ) return "hand tools";
+
+  if (
+    lowerMessage.includes("gage") ||
+    lowerMessage.includes("gauge") ||
+    lowerMessage.includes("inspection") ||
+    lowerMessage.includes("measuring") ||
+    lowerMessage.includes("measurement") ||
+    lowerMessage.includes("calibration")
+  ) return "inspection";
+
+  if (
+    lowerMessage.includes("clamp") ||
+    lowerMessage.includes("vise") ||
+    lowerMessage.includes("workholding") ||
+    lowerMessage.includes("fixture") ||
+    lowerMessage.includes("lathe chuck")
+  ) return "clamping";
+
+  if (
+    lowerMessage.includes("adhesive") ||
+    lowerMessage.includes("sealant") ||
+    lowerMessage.includes("tape")
+  ) return "adhesives";
+
+  if (
+    lowerMessage.includes("paint") ||
+    lowerMessage.includes("spray paint") ||
+    lowerMessage.includes("primer") ||
+    lowerMessage.includes("coating")
+  ) return "paint";
+
+  if (
+    lowerMessage.includes("hardware") ||
+    lowerMessage.includes("hinge") ||
+    lowerMessage.includes("lock") ||
+    lowerMessage.includes("bracket")
+  ) return "hardware";
+
+  if (
+    lowerMessage.includes("ppe") ||
+    lowerMessage.includes("safety") ||
+    lowerMessage.includes("first aid") ||
+    lowerMessage.includes("fire protection")
+  ) return "safety";
+
+  if (
+    lowerMessage.includes("hvac") ||
+    lowerMessage.includes("air conditioner") ||
+    lowerMessage.includes("heater") ||
+    lowerMessage.includes("thermostat") ||
+    lowerMessage.includes("hvac filter") ||
+    lowerMessage.includes("hvac filters")
+  ) return "hvac";
+
+  if (
+    lowerMessage.includes("hydraulic") ||
+    lowerMessage.includes("hose") ||
+    lowerMessage.includes("pump") ||
+    lowerMessage.includes("accumulator")
+  ) return "hydraulics";
+
+  if (
+    lowerMessage.includes("janitorial") ||
+    lowerMessage.includes("sanitation") ||
+    lowerMessage.includes("cleaner") ||
+    lowerMessage.includes("trash bag") ||
+    lowerMessage.includes("trash bags")
+  ) return "janitorial";
+
+  if (
+    lowerMessage.includes("electrical") ||
+    lowerMessage.includes("lighting") ||
+    lowerMessage.includes("extension cord") ||
+    lowerMessage.includes("extension cords") ||
+    lowerMessage.includes("flashlight")
+  ) return "electrical";
+
+  if (
+    lowerMessage.includes("lubrication") ||
+    lowerMessage.includes("lubricant") ||
+    lowerMessage.includes("coolant") ||
+    lowerMessage.includes("grease")
+  ) return "lubrication";
+
+  if (
+    lowerMessage.includes("lathe") ||
+    lowerMessage.includes("milling machine") ||
+    lowerMessage.includes("drill press") ||
+    lowerMessage.includes("machinery")
+  ) return "machinery";
+
+  if (
+    lowerMessage.includes("shelving") ||
+    lowerMessage.includes("storage rack") ||
+    lowerMessage.includes("storage racks") ||
+    lowerMessage.includes("material handling") ||
+    lowerMessage.includes("work bench") ||
+    lowerMessage.includes("workbench")
+  ) return "storage";
+
   if (lowerMessage.includes("sandvik")) return "sandvik";
   if (lowerMessage.includes("iscar")) return "iscar";
   if (lowerMessage.includes("kyocera")) return "kyocera";
@@ -843,51 +1002,6 @@ app.post("/chat", async (req, res) => {
 
       else if (
         lowerMessage.includes("tooling") ||
-  lowerMessage.includes("tool holder") ||
-  lowerMessage.includes("tool holders") ||
-  lowerMessage.includes("collet") ||
-  lowerMessage.includes("collets")
-) {
-
-  if (
-    lowerMessage.includes("tool holder accessory") ||
-    lowerMessage.includes("tool holder accessories")
-  ) {
-    productResults = [
-      { title: "Tool Holder Accessories", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6403" }
-    ];
-  }
-
-  else if (
-    lowerMessage.includes("collet") ||
-    lowerMessage.includes("collets")
-  ) {
-    productResults = [
-      { title: "Collets", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6402" }
-    ];
-  }
-
-  else if (
-    lowerMessage.includes("holder") ||
-    lowerMessage.includes("holders")
-  ) {
-    productResults = [
-      { title: "Tool Holders", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6401" }
-    ];
-  }
-
-  else {
-    productResults = [
-      { title: "Tooling Systems", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6400" },
-      { title: "Tool Holders", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6401" },
-      { title: "Collets", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6402" },
-      { title: "Tool Holder Accessories", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6403" }
-    ];
-  }
-}
-  
-else if (
-  lowerMessage.includes("tooling") ||
   lowerMessage.includes("tool holder") ||
   lowerMessage.includes("tool holders") ||
   lowerMessage.includes("collet") ||
