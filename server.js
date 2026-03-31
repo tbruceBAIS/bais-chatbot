@@ -826,7 +826,7 @@ app.post("/chat", async (req, res) => {
             { title: "Face Groove/Turn Indexable Holders", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/5505" }
           ];
         }
-        else {
+                else {
           productResults = [
             { title: "Groove/Turn & Parting Off", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6103" },
             { title: "Solid and Brazed Groove/Turn & Part Off", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/14" },
@@ -839,9 +839,10 @@ app.post("/chat", async (req, res) => {
             { title: "Groove/Turn & Parting Off Kits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/5507" }
           ];
         }
+      }
 
-else if (
-  lowerMessage.includes("tooling") ||
+      else if (
+        lowerMessage.includes("tooling") ||
   lowerMessage.includes("tool holder") ||
   lowerMessage.includes("tool holders") ||
   lowerMessage.includes("collet") ||
