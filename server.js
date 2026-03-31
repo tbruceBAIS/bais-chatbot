@@ -403,18 +403,6 @@ function getRandomGreeting() {
   return greetings[Math.floor(Math.random() * greetings.length)];
 }
 
-const greetings = [
-  "Hey — what can I help you find today?",
-  "Welcome to Blue Ash Industrial Supply. What are you looking for?",
-  "Need help finding a product? I’ve got you.",
-  "Hey there — what are we working on today?",
-  "Looking for something specific or just browsing?"
-];
-
-function getRandomGreeting() {
-  return greetings[Math.floor(Math.random() * greetings.length)];
-}
-
     if (
       lowerMessage.includes("bob stand") ||
       lowerMessage.includes("b.o.b. stand") ||
