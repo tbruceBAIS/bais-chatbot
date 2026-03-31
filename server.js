@@ -402,25 +402,17 @@ const greetings = [
 function getRandomGreeting() {
   return greetings[Math.floor(Math.random() * greetings.length)];
 }
-app.post("/chat", async (req, res) => {
-  try {
-    const message = String(req.body.message || "").trim();
 
-const lowerMessage = message.toLowerCase();
-    
-    if (!message) {
-      return res.json({ answer: "Ask me something." });
-    }
+const greetings = [
+  "Hey — what can I help you find today?",
+  "Welcome to Blue Ash Industrial Supply. What are you looking for?",
+  "Need help finding a product? I’ve got you.",
+  "Hey there — what are we working on today?",
+  "Looking for something specific or just browsing?"
+];
 
-    const isGreeting =
-  lowerMessage === "hi" ||
-  lowerMessage === "hello" ||
-  lowerMessage === "hey";
-
-    if (isGreeting) {
-  return res.json({
-    reply: getRandomGreeting()
-  });
+function getRandomGreeting() {
+  return greetings[Math.floor(Math.random() * greetings.length)];
 }
 
     if (
@@ -449,7 +441,6 @@ const lowerMessage = message.toLowerCase();
 
 if (looksProductIntent(message)) {
   let productQuery = extractProductQuery(message);
-  const lowerMessage = message.toLowerCase();
 
   if (productQuery === "drilling") {
     if (lowerMessage.includes("drill insert") || lowerMessage.includes("drill inserts")) {
