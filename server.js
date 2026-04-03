@@ -4,9 +4,6 @@ import cors from "cors";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import OpenAI from "openai";
-import fs from "fs";
-import path from "path";
-import csv from "csv-parser";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -22,12 +19,9 @@ const BASE_URL =
   process.env.WEBSITE_BASE_URL || "https://blue-prod-01.bessig.com";
 const VECTOR_STORE_ID =
   process.env.OPENAI_VECTOR_STORE_ID || "vs_69c695df0a1881919287c9ed05b5cf6c";
-
-const GUHRING_CSV_PATH =
-  process.env.GUHRING_CSV_PATH || path.join(process.cwd(), "guhring-p21.csv");
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
 let kbChunks = [];
-let guhringProducts = [];
 
 /* =========================
    WEBSITE KNOWLEDGE
@@ -73,7 +67,7 @@ function getContext(query) {
       const lower = c.text.toLowerCase();
       let score = 0;
 
-      if (lower.includes(q)) score += 10;
+      if (q && lower.includes(q)) score += 10;
 
       const tokens = q.split(/\s+/).filter(Boolean);
       for (const token of tokens) {
@@ -91,7 +85,7 @@ function getContext(query) {
 }
 
 /* =========================
-   CLEAN TEXT
+   CLEANERS
 ========================= */
 function cleanPlainText(text) {
   return String(text || "")
@@ -106,265 +100,6 @@ function escapeHtml(value) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
-
-/* =========================
-   LOCAL GUHRING CSV
-========================= */
-function loadGuhringCSV() {
-  return new Promise((resolve, reject) => {
-    if (!fs.existsSync(GUHRING_CSV_PATH)) {
-      console.log("GUHRING CSV NOT FOUND:", GUHRING_CSV_PATH);
-      guhringProducts = [];
-      resolve();
-      return;
-    }
-
-    const results = [];
-
-    fs.createReadStream(GUHRING_CSV_PATH)
-      .pipe(csv())
-      .on("data", (row) => {
-        results.push({
-          vendor: "GUHRING",
-          partNumber: String(row["Supplier Part #"] || "").trim(),
-          description: String(row["Description"] || "").trim(),
-          extDescription: String(row["Ext Description"] || "").trim(),
-          listPrice: row["List Price"] ?? null,
-        });
-      })
-      .on("end", () => {
-        guhringProducts = results.filter(
-          (p) => p.partNumber || p.description || p.extDescription
-        );
-        console.log(`GUHRING CSV LOADED: ${guhringProducts.length}`);
-        resolve();
-      })
-      .on("error", (err) => {
-        console.log("GUHRING CSV LOAD ERROR:", err.message);
-        reject(err);
-      });
-  });
-}
-
-function up(text) {
-  return text ? String(text).toUpperCase() : "";
-}
-
-function normalize(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9./\-\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function detectVendor(message) {
-  const m = String(message || "").toLowerCase();
-  if (m.includes("guhring")) return "guhring";
-  return null;
-}
-
-function detectGuhringToolType(message) {
-  const m = String(message || "").toLowerCase();
-
-  if (m.includes("thread mill") || m.includes("threadmill")) return "thread_mill";
-  if (m.includes("end mill") || m.includes("endmill")) return "end_mill";
-  if (m.includes("reamer") || m.includes("reaming")) return "reamer";
-  if (m.includes("tap") || m.includes("tapping")) return "tap";
-  if (m.includes("drill") || m.includes("drilling")) return "drill";
-
-  return null;
-}
-
-function matchesGuhringType(desc, type) {
-  const d = normalize(desc);
-
-  if (type === "drill") return d.includes("drill");
-  if (type === "tap") return d.includes("tap");
-  if (type === "reamer") return d.includes("reamer");
-  if (type === "thread_mill") return d.includes("thread mill") || d.includes("threadmill");
-  if (type === "end_mill") {
-    return (
-      d.includes("end mill") ||
-      d.includes("endmill") ||
-      d.includes("ballnose") ||
-      d.includes("ball nose") ||
-      d.includes("square end") ||
-      d.includes("corner radius")
-    );
-  }
-
-  return false;
-}
-
-function scoreGuhringMatch(message, product, type) {
-  const msg = normalize(message);
-  const desc = normalize(`${product.description} ${product.extDescription}`);
-
-  if (!matchesGuhringType(desc, type)) return -999;
-
-  let score = 10;
-
-  const tokens = msg.split(" ").filter(Boolean);
-  for (const token of tokens) {
-    if (token.length < 2) continue;
-    if (desc.includes(token)) score += 2;
-  }
-
-  const fractions = msg.match(/\d+\/\d+/g) || [];
-  for (const f of fractions) {
-    if (desc.includes(f)) score += 10;
-  }
-
-  const decimals = msg.match(/\d+\.\d+/g) || [];
-  for (const d of decimals) {
-    if (desc.includes(d)) score += 10;
-  }
-
-  const strongTerms = [
-    "carbide",
-    "hss",
-    "cobalt",
-    "ball",
-    "ballnose",
-    "ball nose",
-    "square",
-    "corner radius",
-    "4fl",
-    "3fl",
-    "2fl",
-    "5fl",
-    "6fl",
-    "solid",
-    "indexable",
-    "form",
-    "forming",
-    "cut",
-    "blind",
-    "through",
-    "coolant",
-  ];
-
-  for (const term of strongTerms) {
-    if (msg.includes(term) && desc.includes(term)) {
-      score += 4;
-    }
-  }
-
-  if (product.partNumber && msg.includes(product.partNumber.toLowerCase())) {
-    score += 50;
-  }
-
-  return score;
-}
-
-function findBestGuhringMatch(message, type) {
-  if (!type || !guhringProducts.length) return null;
-
-  const scored = guhringProducts
-    .map((p) => ({
-      ...p,
-      score: scoreGuhringMatch(message, p, type),
-    }))
-    .filter((p) => p.score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  return scored[0] || null;
-}
-
-function formatListPrice(price) {
-  if (price === null || price === undefined || price === "") return "N/A";
-
-  const numeric = Number(String(price).replace(/[$,]/g, ""));
-  if (Number.isNaN(numeric)) return String(price);
-
-  return `$${numeric.toFixed(2)}`;
-}
-
-function formatGuhringProduct(product) {
-  const lines = [
-    "MOST SIMILAR GUHRING MATCH:",
-    "",
-    `PART #: ${up(product.partNumber)}`,
-    `DESCRIPTION: ${up(product.description)}`,
-  ];
-
-  if (product.extDescription) {
-    lines.push(`EXT DESCRIPTION: ${up(product.extDescription)}`);
-  }
-
-  lines.push(`LIST PRICE: ${up(formatListPrice(product.listPrice))}`);
-
-  return lines.join("\n");
-}
-
-function getGuhringFollowUp(type) {
-  switch (type) {
-    case "drill":
-      return [
-        "MATERIAL BEING CUT",
-        "DRILL DIAMETER",
-        "THROUGH HOLE OR BLIND HOLE",
-        "COOLANT-THROUGH REQUIRED OR NOT",
-      ];
-    case "tap":
-      return [
-        "THREAD SIZE",
-        "MATERIAL BEING CUT",
-        "CUT TAP OR FORM TAP",
-        "THROUGH HOLE OR BLIND HOLE",
-      ];
-    case "reamer":
-      return [
-        "REAMER DIAMETER",
-        "MATERIAL BEING CUT",
-        "SOLID OR INDEXABLE PREFERENCE",
-        "TOLERANCE REQUIREMENT",
-      ];
-    case "thread_mill":
-      return [
-        "THREAD SIZE",
-        "MATERIAL BEING CUT",
-        "INTERNAL OR EXTERNAL THREAD",
-        "THREAD PITCH",
-      ];
-    case "end_mill":
-      return [
-        "MATERIAL BEING CUT",
-        "CUTTER DIAMETER",
-        "ROUGHING OR FINISHING",
-        "SQUARE END, BALL NOSE, OR CORNER RADIUS",
-      ];
-    default:
-      return [
-        "MATERIAL BEING CUT",
-        "TOOL SIZE",
-        "APPLICATION DETAILS",
-      ];
-  }
-}
-
-function buildGuhringReply(type, product) {
-  const followUp = getGuhringFollowUp(type);
-
-  if (product) {
-    return [
-      "GUHRING IS A STRONG OPTION FOR THIS APPLICATION.",
-      "",
-      formatGuhringProduct(product),
-      "",
-      "TO FURTHER OPTIMIZE SELECTION, PLEASE CONFIRM:",
-      ...followUp.map((q) => `- ${q}`),
-    ].join("\n");
-  }
-
-  return [
-    "I CAN HELP NARROW THE GUHRING SELECTION, BUT I NEED A LITTLE MORE DETAIL.",
-    "",
-    "PLEASE CONFIRM:",
-    ...followUp.map((q) => `- ${q}`),
-  ].join("\n");
 }
 
 /* =========================
@@ -393,33 +128,33 @@ function isJunkTitle(title) {
 }
 
 function looksProductIntent(message) {
-  const lowerMessage = String(message || "").toLowerCase();
+  const lower = String(message || "").toLowerCase();
 
   return (
-    lowerMessage.includes("find") ||
-    lowerMessage.includes("looking for") ||
-    lowerMessage.includes("show me") ||
-    lowerMessage.includes("need") ||
-    lowerMessage.includes("do you have") ||
-    lowerMessage.includes("where can i find") ||
-    lowerMessage.includes("drill") ||
-    lowerMessage.includes("end mill") ||
-    lowerMessage.includes("endmill") ||
-    lowerMessage.includes("tap") ||
-    lowerMessage.includes("reamer") ||
-    lowerMessage.includes("thread mill") ||
-    lowerMessage.includes("insert") ||
-    lowerMessage.includes("tool holder") ||
-    lowerMessage.includes("collet") ||
-    lowerMessage.includes("abrasive") ||
-    lowerMessage.includes("fastener") ||
-    lowerMessage.includes("saw") ||
-    lowerMessage.includes("power tool") ||
-    lowerMessage.includes("hand tool") ||
-    lowerMessage.includes("safety") ||
-    lowerMessage.includes("paint") ||
-    lowerMessage.includes("electrical") ||
-    lowerMessage.includes("hydraulic")
+    lower.includes("find") ||
+    lower.includes("looking for") ||
+    lower.includes("show me") ||
+    lower.includes("need") ||
+    lower.includes("do you have") ||
+    lower.includes("where can i find") ||
+    lower.includes("drill") ||
+    lower.includes("end mill") ||
+    lower.includes("endmill") ||
+    lower.includes("tap") ||
+    lower.includes("reamer") ||
+    lower.includes("thread mill") ||
+    lower.includes("insert") ||
+    lower.includes("tool holder") ||
+    lower.includes("collet") ||
+    lower.includes("abrasive") ||
+    lower.includes("fastener") ||
+    lower.includes("saw") ||
+    lower.includes("power tool") ||
+    lower.includes("hand tool") ||
+    lower.includes("safety") ||
+    lower.includes("paint") ||
+    lower.includes("electrical") ||
+    lower.includes("hydraulic")
   );
 }
 
@@ -435,6 +170,7 @@ function extractProductQuery(message) {
   if (lowerMessage.includes("groov")) return "grooving";
   if (lowerMessage.includes("part")) return "parting";
   if (lowerMessage.includes("boring")) return "boring";
+
   if (
     lowerMessage.includes("tooling") ||
     lowerMessage.includes("collet") ||
@@ -594,43 +330,53 @@ function extractProductQuery(message) {
   return message;
 }
 
-async function searchProducts(query) {
+async function searchProducts(keyword) {
   try {
-    const url = `${BASE_URL}/search.php?kw=${encodeURIComponent(query)}`;
-    const res = await axios.get(url, { timeout: 20000 });
-    const $ = cheerio.load(res.data);
+    const kw = String(keyword || "").trim();
+    if (!kw) return [];
+
+    const searchUrl = `${BASE_URL}/showgroups.php?kw=${encodeURIComponent(kw)}`;
+    const page = await axios.get(searchUrl, { timeout: 20000 });
+    const $ = cheerio.load(page.data);
 
     const results = [];
     const seen = new Set();
 
-    $("a").each((_, el) => {
-      const href = ($(el).attr("href") || "").trim();
+    $("a[href*='/catalogue/']").each((_, el) => {
+      const href = $(el).attr("href");
       const title = $(el).text().replace(/\s+/g, " ").trim();
 
-      if (!href || !title || isJunkTitle(title)) return;
+      if (!href || !title) return;
+      if (isJunkTitle(title)) return;
+      if (href.includes("javascript")) return;
+      if (href.startsWith("#")) return;
+      if (href.startsWith("tel:")) return;
+      if (href.startsWith("mailto:")) return;
+      if (href.includes("basket.php")) return;
+      if (href.includes("facebook.com")) return;
+      if (href.includes("twitter.com")) return;
+      if (href.includes("linkedin.com")) return;
+      if (href.includes("google.com")) return;
+      if (!href.includes("/catalogue/")) return;
 
-      const absolute = href.startsWith("http")
+      const cleanHref = href.startsWith("/") ? href.slice(1) : href;
+
+      const fullUrl = href.startsWith("http")
         ? href
-        : `${BASE_URL}${href.startsWith("/") ? "" : "/"}${href}`;
+        : `${BASE_URL}/${cleanHref}`;
 
-      const isRelevant =
-        absolute.includes("/catalogue/group/") ||
-        absolute.includes("/browse/catalogue/group/") ||
-        absolute.includes("/catalogue/product/") ||
-        absolute.includes("/browse/catalogue/product/") ||
-        absolute.includes("/showgroups.php") ||
-        absolute.includes("/search.php");
+      if (seen.has(fullUrl)) return;
+      seen.add(fullUrl);
 
-      if (!isRelevant) return;
-      if (seen.has(absolute)) return;
-
-      seen.add(absolute);
-      results.push({ title, url: absolute });
+      results.push({
+        title,
+        url: fullUrl,
+      });
     });
 
-    return results.slice(0, 8);
+    return results.slice(0, 5);
   } catch (err) {
-    console.log("PRODUCT SEARCH ERROR:", err.message);
+    console.log("PRODUCT SEARCH HELPER ERROR:", err.message);
     return [];
   }
 }
@@ -638,29 +384,207 @@ async function searchProducts(query) {
 function formatRelatedOptionsHtml(productResults) {
   if (!productResults.length) return "";
 
-  let html = "<br><br><b>Related options:</b><br>";
+  let productText = "<br><br><b>Related options:</b><br>";
 
-  for (const p of productResults) {
-    html += `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.title)}</a><br>`;
-  }
+  productResults.slice(0, 3).forEach((p) => {
+    productText += `<a href="${escapeHtml(p.url)}" target="_blank"
+      style="
+        display:inline-flex;
+        align-items:center;
+        justify-content:flex-start;
+        background:#eef3ff;
+        color:#1c50af;
+        padding:6px 10px;
+        border-radius:14px;
+        margin:4px 6px 0 0;
+        text-decoration:none;
+        font-size:12px;
+        border:1px solid #d0dcff;
+        text-align:left;
+        white-space:nowrap;
+      ">
+      ${escapeHtml(p.title)}
+    </a>`;
+  });
 
-  return html;
-}/* =========================
-   ROUTES
+  return productText;
+}
+
+/* =========================
+   STATIC ROUTES
 ========================= */
 app.get("/", (_req, res) => {
-  res.send("B.O.B. IS RUNNING");
+  res.json({ ok: true, service: "B.O.B." });
 });
 
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     kbChunks: kbChunks.length,
-    guhringProducts: guhringProducts.length,
-    vectorStoreEnabled: !!VECTOR_STORE_ID,
+    baseUrl: BASE_URL,
+    vectorStoreId: VECTOR_STORE_ID,
   });
 });
 
+/* =========================
+   WIDGET UI
+========================= */
+app.get("/widget", (_req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B.O.B.</title>
+<style>
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#eef1f6}
+.chat{width:100%;max-width:390px;height:520px;margin:auto;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;background:#f3f4f8}
+.header{background:#1c50af;color:#fff;padding:14px;text-align:center;font-weight:bold}
+.messages{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.row{display:flex}
+.user{justify-content:flex-end}
+.bot{justify-content:flex-start}
+.bubble{
+  display:inline-block;
+  max-width:80%;
+  padding:10px 14px;
+  border-radius:18px;
+  font-size:14px;
+  white-space:pre-wrap;
+  line-height:1.45;
+}
+.user .bubble{background:#1c50af;color:#fff;border-bottom-right-radius:6px}
+.bot .bubble{background:#fff;border:1px solid #ddd;border-bottom-left-radius:6px}
+.input{display:flex;border-top:1px solid #ddd;background:#fff}
+.input input{
+  flex:1;
+  border:none;
+  padding:14px;
+  font-size:14px;
+  outline:none;
+}
+.input button{
+  border:none;
+  background:#1c50af;
+  color:#fff;
+  padding:0 18px;
+  cursor:pointer;
+  font-size:14px;
+}
+.typing .bubble{
+  display:flex;
+  gap:4px;
+  align-items:center;
+}
+.dot{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#888;
+  display:inline-block;
+  animation:bob 1.1s infinite ease-in-out;
+}
+.dot:nth-child(2){animation-delay:.15s}
+.dot:nth-child(3){animation-delay:.3s}
+@keyframes bob{
+  0%,80%,100%{transform:scale(.7);opacity:.5}
+  40%{transform:scale(1);opacity:1}
+}
+a{color:#1c50af}
+</style>
+</head>
+<body>
+<div class="chat">
+  <div class="header">B.O.B. — BLUE'S OPERATION BOT</div>
+  <div class="messages" id="messages"></div>
+  <div class="input">
+    <input id="input" type="text" placeholder="ASK ABOUT TOOLS, MRO, OR BLUE ASH..." />
+    <button id="sendBtn" onclick="send()">SEND</button>
+  </div>
+</div>
+
+<script>
+const messages = document.getElementById("messages");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("sendBtn");
+
+function add(text, who){
+  const row = document.createElement("div");
+  row.className = "row " + who;
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.innerHTML = text;
+
+  row.appendChild(bubble);
+  messages.appendChild(row);
+  messages.scrollTop = messages.scrollHeight;
+}function showTyping(){
+  const row = document.createElement("div");
+  row.className = "row bot typing";
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+
+  for(let i=0;i<3;i++){
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    bubble.appendChild(dot);
+  }
+
+  row.appendChild(bubble);
+  messages.appendChild(row);
+  messages.scrollTop = messages.scrollHeight;
+
+  return row;
+}
+
+async function send(){
+  const text = input.value.trim();
+  if(!text) return;
+
+  add(text, "user");
+  input.value = "";
+  input.disabled = true;
+  sendBtn.disabled = true;
+
+  const typingEl = showTyping();
+
+  try{
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text })
+    });
+
+    const data = await res.json();
+    typingEl.remove();
+    add(data.answer || "NO RESPONSE RECEIVED.", "bot");
+
+  }catch(e){
+    typingEl.remove();
+    add("ERROR CONNECTING TO SERVER.", "bot");
+  }
+
+  input.disabled = false;
+  sendBtn.disabled = false;
+  input.focus();
+}
+
+input.addEventListener("keydown", e=>{
+  if(e.key === "Enter") send();
+});
+
+add("HELLO, I AM B.O.B. HOW CAN I HELP YOU TODAY?", "bot");
+</script>
+</body>
+</html>
+`);
+});
+
+/* =========================
+   CHAT ROUTE (VECTOR-BASED)
+========================= */
 app.post("/chat", async (req, res) => {
   try {
     const message = String(req.body.message || "").trim();
@@ -674,7 +598,7 @@ app.post("/chat", async (req, res) => {
     const lowerMessage = message.toLowerCase();
 
     /* =========================
-       SIMPLE DIRECT RESPONSES
+       SIMPLE RESPONSES
     ========================= */
     if (
       lowerMessage.includes("who built you") ||
@@ -693,28 +617,12 @@ app.post("/chat", async (req, res) => {
       lowerMessage === "hey"
     ) {
       return res.json({
-        answer:
-          "HELLO, I AM B.O.B. HOW CAN I HELP YOU TODAY?",
+        answer: "HELLO, I AM B.O.B. HOW CAN I HELP YOU TODAY?",
       });
     }
 
     /* =========================
-       LOCAL GUHRING MATCHING
-    ========================= */
-    const vendor = detectVendor(message);
-    const guhringType = detectGuhringToolType(message);
-
-    if (vendor === "guhring" && guhringType) {
-      const bestMatch = findBestGuhringMatch(message, guhringType);
-      const guhringReply = buildGuhringReply(guhringType, bestMatch);
-
-      return res.json({
-        answer: guhringReply,
-      });
-    }
-
-    /* =========================
-       SITE PRODUCT SEARCH HELP
+       PRODUCT SEARCH HELP
     ========================= */
     let relatedOptionsHtml = "";
 
@@ -730,26 +638,29 @@ app.post("/chat", async (req, res) => {
     const context = getContext(message);
 
     /* =========================
-       OPENAI RESPONSE
+       SYSTEM PROMPT
     ========================= */
     const systemPrompt = `
 You are B.O.B. for Blue Ash Industrial Supply.
 
-Your role:
-- Help users with industrial tooling and MRO questions
-- Answer questions about Blue Ash Industrial Supply
-- Use the provided website context when relevant
-- Be concise, helpful, and technically competent
-- Do not claim to place orders or quotes
-- When needed, direct customers to call (513) 530-0188 or email sales@blueashsupply.com
+You are a knowledgeable industrial tooling assistant.
 
-Important behavior rules:
-- If the user is asking about a Guhring product and the local Guhring matcher did not already answer, you may still answer generally, but do not invent exact part numbers
-- If product data is uncertain, ask clarifying questions
-- Prefer practical recommendations over vague marketing language
-- If the user asks for company/contact information, provide Blue Ash Industrial Supply contact details
-- If the user asks about products/categories, you may reference relevant categories or options
-- Keep responses readable in plain text
+Your responsibilities:
+- Help users find tools and MRO products
+- Provide recommendations based on application
+- Use vector store knowledge when available
+- Use website context when relevant
+
+Behavior rules:
+- Do NOT say you can place orders or quotes
+- Always be concise and technical
+- Ask clarifying questions when needed
+- Prefer practical recommendations
+- If unsure, guide user toward better inputs
+
+Company contact:
+Phone: (513) 530-0188
+Email: sales@blueashsupply.com
 `;
 
     const userPrompt = `
@@ -757,37 +668,29 @@ USER MESSAGE:
 ${message}
 
 WEBSITE CONTEXT:
-${context || "NO ADDITIONAL CONTEXT FOUND."}
+${context || "NONE"}
 `;
 
-    const responseConfig = {
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+    /* =========================
+       OPENAI REQUEST
+    ========================= */
+    const response = await client.responses.create({
+      model: OPENAI_MODEL,
       input: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: userPrompt,
-        },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
       ],
-    };
-
-    if (VECTOR_STORE_ID) {
-      responseConfig.tools = [
+      tools: [
         {
           type: "file_search",
           vector_store_ids: [VECTOR_STORE_ID],
-        },
-      ];
-    }
-
-    const response = await client.responses.create(responseConfig);
+        }
+      ]
+    });
 
     let answer =
       response.output_text ||
-      "I'M SORRY, I COULDN'T GENERATE A RESPONSE RIGHT NOW.";
+      "I'M SORRY, I COULDN'T GENERATE A RESPONSE.";
 
     answer = cleanPlainText(answer);
 
@@ -796,6 +699,7 @@ ${context || "NO ADDITIONAL CONTEXT FOUND."}
     }
 
     return res.json({ answer });
+
   } catch (err) {
     console.error("CHAT ERROR:", err);
 
@@ -807,20 +711,20 @@ ${context || "NO ADDITIONAL CONTEXT FOUND."}
 });
 
 /* =========================
-   STARTUP
+   START SERVER
 ========================= */
 async function startServer() {
   try {
     console.log("STARTING B.O.B...");
-    await loadGuhringCSV();
+
     await buildKnowledgeBase();
 
     app.listen(port, () => {
       console.log(`B.O.B. RUNNING ON PORT ${port}`);
       console.log(`BASE URL: ${BASE_URL}`);
-      console.log(`VECTOR STORE: ${VECTOR_STORE_ID || "NOT SET"}`);
-      console.log(`GUHRING CSV: ${GUHRING_CSV_PATH}`);
+      console.log(`VECTOR STORE: ${VECTOR_STORE_ID}`);
     });
+
   } catch (err) {
     console.error("STARTUP ERROR:", err);
     process.exit(1);
