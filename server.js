@@ -8,9 +8,6 @@ import OpenAI from "openai";
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json({ limit: "2mb" }));
-
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -22,6 +19,9 @@ const VECTOR_STORE_ID =
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
 let kbChunks = [];
+
+app.use(cors());
+app.use(express.json({ limit: "2mb" }));
 
 /* =========================
    WEBSITE KNOWLEDGE
@@ -50,9 +50,9 @@ async function buildKnowledgeBase() {
         chunks.push({ url, text: p });
       }
 
-      console.log("INDEXED:", url);
+      console.log("Indexed:", url);
     } catch (err) {
-      console.log("FAILED TO INDEX:", url, err.message);
+      console.log("Failed:", url, err.message);
     }
   }
 
@@ -85,7 +85,7 @@ function getContext(query) {
 }
 
 /* =========================
-   CLEANERS
+   CLEAN TEXT
 ========================= */
 function cleanPlainText(text) {
   return String(text || "")
@@ -100,6 +100,240 @@ function escapeHtml(value) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+/* =========================
+   HISTORY + VENDOR HELPERS
+========================= */
+function sanitizeHistory(history) {
+  if (!Array.isArray(history)) return [];
+
+  return history
+    .filter(
+      (item) =>
+        item &&
+        (item.role === "user" || item.role === "assistant") &&
+        typeof item.content === "string" &&
+        item.content.trim()
+    )
+    .slice(-8)
+    .map((item) => ({
+      role: item.role,
+      content: item.content.trim(),
+    }));
+}
+
+function detectVendor(message, history = []) {
+  const combined = [
+    String(message || ""),
+    ...history.map((h) => String(h.content || "")),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (combined.includes("guhring")) return "guhring";
+  if (combined.includes("sandvik")) return "sandvik";
+  if (combined.includes("iscar")) return "iscar";
+  if (combined.includes("kyocera")) return "kyocera";
+  if (combined.includes("sgs")) return "sgs";
+
+  return null;
+}
+
+function detectGuhringToolType(message, history = []) {
+  const combined = [
+    String(message || ""),
+    ...history.map((h) => String(h.content || "")),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (combined.includes("thread mill") || combined.includes("thread mills")) {
+    return "thread_mill";
+  }
+
+  if (
+    combined.includes("end mill") ||
+    combined.includes("end mills") ||
+    combined.includes("endmill") ||
+    combined.includes("endmills") ||
+    combined.includes("ballnose") ||
+    combined.includes("ball nose")
+  ) {
+    return "end_mill";
+  }
+
+  if (combined.includes("reamer") || combined.includes("reamers") || combined.includes("reaming")) {
+    return "reamer";
+  }
+
+  if (combined.includes("tap") || combined.includes("taps") || combined.includes("tapping")) {
+    return "tap";
+  }
+
+  if (combined.includes("drill") || combined.includes("drills") || combined.includes("drilling")) {
+    return "drill";
+  }
+
+  return null;
+}
+
+function getGuhringFollowUp(type) {
+  switch (type) {
+    case "drill":
+      return [
+        "Diameter and length",
+        "Material to drill (steel, stainless, aluminum, etc.)",
+        "Type (solid carbide, HSS, indexable, etc.)",
+        "Specific application or machine tool",
+      ];
+    case "end_mill":
+      return [
+        "Diameter",
+        "Material being cut",
+        "Operation (roughing, finishing, slotting, profiling)",
+        "End style needed (square end, ball nose, corner radius)",
+      ];
+    case "tap":
+      return [
+        "Thread size",
+        "Material being cut",
+        "Cut tap or form tap",
+        "Through hole or blind hole",
+      ];
+    case "reamer":
+      return [
+        "Reamer diameter",
+        "Material being cut",
+        "Tolerance requirement",
+        "Solid or indexable preference",
+      ];
+    case "thread_mill":
+      return [
+        "Thread size",
+        "Material being cut",
+        "Internal or external thread",
+        "Pitch requirement",
+      ];
+    default:
+      return [
+        "Tool size",
+        "Material",
+        "Application details",
+      ];
+  }
+}
+
+function getGuhringCategoryResults(type, lowerMessage = "") {
+  if (type === "drill") {
+    if (lowerMessage.includes("drill insert") || lowerMessage.includes("drill inserts")) {
+      return [
+        { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" }
+      ];
+    }
+
+    if (
+      lowerMessage.includes("solid carbide drill") ||
+      lowerMessage.includes("solid carbide drills") ||
+      lowerMessage.includes("carbide drill") ||
+      lowerMessage.includes("carbide drills")
+    ) {
+      return [
+        { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" }
+      ];
+    }
+
+    if (
+      lowerMessage.includes("hss drill") ||
+      lowerMessage.includes("hss drills") ||
+      lowerMessage.includes("co drill") ||
+      lowerMessage.includes("co drills") ||
+      lowerMessage.includes("hss/co drill") ||
+      lowerMessage.includes("hss/co drills")
+    ) {
+      return [
+        { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" }
+      ];
+    }
+
+    if (
+      lowerMessage.includes("center drill") ||
+      lowerMessage.includes("center drills") ||
+      lowerMessage.includes("spot drill") ||
+      lowerMessage.includes("spot drills") ||
+      lowerMessage.includes("center and spot")
+    ) {
+      return [
+        { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
+      ];
+    }
+
+    return [
+      { title: "Drilling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6201" },
+      { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" },
+      { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" },
+      { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" },
+      { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
+    ];
+  }
+
+  if (type === "end_mill") {
+    if (
+      lowerMessage.includes("solid end mill") ||
+      lowerMessage.includes("solid carbide end mill") ||
+      lowerMessage.includes("solid milling")
+    ) {
+      return [
+        { title: "Solid Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6001" }
+      ];
+    }
+
+    if (
+      lowerMessage.includes("indexable mill") ||
+      lowerMessage.includes("indexable milling") ||
+      lowerMessage.includes("face mill") ||
+      lowerMessage.includes("face mills") ||
+      lowerMessage.includes("shell mill")
+    ) {
+      return [
+        { title: "Indexable Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6002" }
+      ];
+    }
+
+    return [
+      { title: "Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6000" },
+      { title: "Solid Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6001" },
+      { title: "Indexable Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6002" }
+    ];
+  }
+
+  if (type === "tap") {
+    return [
+      { title: "Threading", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6300" },
+      { title: "Taps", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6104" },
+      { title: "Dies", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6302" },
+      { title: "Thread Mills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6303" }
+    ];
+  }
+
+  if (type === "thread_mill") {
+    return [
+      { title: "Thread Mills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6303" },
+      { title: "Threading", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6300" },
+      { title: "Dies", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6302" }
+    ];
+  }
+
+  if (type === "reamer") {
+    return [
+      { title: "Reaming", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6202" },
+      { title: "Solid/Brazed Reamers", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6220" },
+      { title: "Indexable Reamer Bodies", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/98" },
+      { title: "Indexable Reamer Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/94" }
+    ];
+  }
+
+  return [];
 }
 
 /* =========================
@@ -130,36 +364,58 @@ function isJunkTitle(title) {
 function looksProductIntent(message) {
   const lower = String(message || "").toLowerCase();
 
-  return (
-    lower.includes("find") ||
-    lower.includes("looking for") ||
-    lower.includes("show me") ||
-    lower.includes("need") ||
-    lower.includes("do you have") ||
-    lower.includes("where can i find") ||
-    lower.includes("drill") ||
-    lower.includes("end mill") ||
-    lower.includes("endmill") ||
-    lower.includes("tap") ||
-    lower.includes("reamer") ||
-    lower.includes("thread mill") ||
-    lower.includes("insert") ||
-    lower.includes("tool holder") ||
-    lower.includes("collet") ||
-    lower.includes("abrasive") ||
-    lower.includes("fastener") ||
-    lower.includes("saw") ||
-    lower.includes("power tool") ||
-    lower.includes("hand tool") ||
-    lower.includes("safety") ||
-    lower.includes("paint") ||
-    lower.includes("electrical") ||
-    lower.includes("hydraulic")
-  );
-}
+  const productKeywords = [
+    "drill", "drills", "drilling",
+    "insert", "inserts",
+    "mill", "mills", "milling", "end mill", "end mills",
+    "tap", "taps",
+    "reamer", "reamers",
+    "thread mill", "thread mills",
+    "tool holder", "tool holders",
+    "collet", "collets",
+    "abrasive", "abrasives",
+    "fastener", "fasteners",
+    "saw", "saws",
+    "power tool", "power tools",
+    "hand tool", "hand tools",
+    "safety",
+    "paint",
+    "electrical",
+    "hydraulic",
+    "lubrication",
+    "janitorial",
+    "hvac",
+    "hardware",
+    "clamp",
+    "vise",
+    "inspection",
+    "gage",
+    "gauge",
+    "measuring"
+  ];
 
-function extractProductQuery(message) {
+  return productKeywords.some((k) => lower.includes(k));
+}function extractProductQuery(message) {
   const lowerMessage = String(message || "").toLowerCase();
+
+  if (lowerMessage.includes("drill insert") || lowerMessage.includes("drill inserts")) return "drill inserts";
+  if (
+    lowerMessage.includes("solid carbide drill") ||
+    lowerMessage.includes("solid carbide drills") ||
+    lowerMessage.includes("carbide drill") ||
+    lowerMessage.includes("carbide drills")
+  ) return "solid carbide drills";
+  if (
+    lowerMessage.includes("hss drill") ||
+    lowerMessage.includes("hss drills") ||
+    lowerMessage.includes("co drill") ||
+    lowerMessage.includes("co drills")
+  ) return "hss/co drills";
+  if (
+    lowerMessage.includes("center drill") ||
+    lowerMessage.includes("spot drill") ||
+    lowerMessage.includes("center and spot")
+  ) return "center and spot drills";
 
   if (lowerMessage.includes("drill") || lowerMessage.includes("drilling")) return "drilling";
   if (lowerMessage.includes("insert") || lowerMessage.includes("turning")) return "turning";
@@ -330,53 +586,43 @@ function extractProductQuery(message) {
   return message;
 }
 
-async function searchProducts(keyword) {
+async function searchProducts(query) {
   try {
-    const kw = String(keyword || "").trim();
-    if (!kw) return [];
-
-    const searchUrl = `${BASE_URL}/showgroups.php?kw=${encodeURIComponent(kw)}`;
-    const page = await axios.get(searchUrl, { timeout: 20000 });
-    const $ = cheerio.load(page.data);
+    const url = `${BASE_URL}/showgroups.php?kw=${encodeURIComponent(query)}`;
+    const res = await axios.get(url, { timeout: 20000 });
+    const $ = cheerio.load(res.data);
 
     const results = [];
     const seen = new Set();
 
-    $("a[href*='/catalogue/']").each((_, el) => {
-      const href = $(el).attr("href");
+    $("a").each((_, el) => {
+      const href = ($(el).attr("href") || "").trim();
       const title = $(el).text().replace(/\s+/g, " ").trim();
 
-      if (!href || !title) return;
-      if (isJunkTitle(title)) return;
-      if (href.includes("javascript")) return;
-      if (href.startsWith("#")) return;
-      if (href.startsWith("tel:")) return;
-      if (href.startsWith("mailto:")) return;
-      if (href.includes("basket.php")) return;
-      if (href.includes("facebook.com")) return;
-      if (href.includes("twitter.com")) return;
-      if (href.includes("linkedin.com")) return;
-      if (href.includes("google.com")) return;
-      if (!href.includes("/catalogue/")) return;
+      if (!href || !title || isJunkTitle(title)) return;
 
-      const cleanHref = href.startsWith("/") ? href.slice(1) : href;
-
-      const fullUrl = href.startsWith("http")
+      const absolute = href.startsWith("http")
         ? href
-        : `${BASE_URL}/${cleanHref}`;
+        : `${BASE_URL}${href.startsWith("/") ? "" : "/"}${href}`;
 
-      if (seen.has(fullUrl)) return;
-      seen.add(fullUrl);
+      const isRelevant =
+        absolute.includes("/catalogue/group/") ||
+        absolute.includes("/browse/catalogue/group/") ||
+        absolute.includes("/catalogue/product/") ||
+        absolute.includes("/browse/catalogue/product/") ||
+        absolute.includes("/showgroups.php") ||
+        absolute.includes("/search.php");
 
-      results.push({
-        title,
-        url: fullUrl,
-      });
+      if (!isRelevant) return;
+      if (seen.has(absolute)) return;
+
+      seen.add(absolute);
+      results.push({ title, url: absolute });
     });
 
-    return results.slice(0, 5);
+    return results.slice(0, 8);
   } catch (err) {
-    console.log("PRODUCT SEARCH HELPER ERROR:", err.message);
+    console.log("Product search error:", err.message);
     return [];
   }
 }
@@ -384,37 +630,20 @@ async function searchProducts(keyword) {
 function formatRelatedOptionsHtml(productResults) {
   if (!productResults.length) return "";
 
-  let productText = "<br><br><b>Related options:</b><br>";
+  let html = "<br><br><b>Related options:</b><br>";
 
-  productResults.slice(0, 3).forEach((p) => {
-    productText += `<a href="${escapeHtml(p.url)}" target="_blank"
-      style="
-        display:inline-flex;
-        align-items:center;
-        justify-content:flex-start;
-        background:#eef3ff;
-        color:#1c50af;
-        padding:6px 10px;
-        border-radius:14px;
-        margin:4px 6px 0 0;
-        text-decoration:none;
-        font-size:12px;
-        border:1px solid #d0dcff;
-        text-align:left;
-        white-space:nowrap;
-      ">
-      ${escapeHtml(p.title)}
-    </a>`;
-  });
+  for (const p of productResults.slice(0, 5)) {
+    html += `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.title)}</a><br>`;
+  }
 
-  return productText;
+  return html;
 }
 
 /* =========================
    STATIC ROUTES
 ========================= */
 app.get("/", (_req, res) => {
-  res.json({ ok: true, service: "B.O.B." });
+  res.send("B.O.B. is running");
 });
 
 app.get("/health", (_req, res) => {
@@ -422,180 +651,300 @@ app.get("/health", (_req, res) => {
     ok: true,
     kbChunks: kbChunks.length,
     baseUrl: BASE_URL,
-    vectorStoreId: VECTOR_STORE_ID,
+    vectorStoreEnabled: !!VECTOR_STORE_ID,
   });
 });
 
 /* =========================
-   WIDGET UI
+   PRODUCT SEARCH ROUTE
 ========================= */
-app.get("/widget", (_req, res) => {
-  res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>B.O.B.</title>
-<style>
-body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#eef1f6}
-.chat{width:100%;max-width:390px;height:520px;margin:auto;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;background:#f3f4f8}
-.header{background:#1c50af;color:#fff;padding:14px;text-align:center;font-weight:bold}
-.messages{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
-.row{display:flex}
-.user{justify-content:flex-end}
-.bot{justify-content:flex-start}
-.bubble{
-  display:inline-block;
-  max-width:80%;
-  padding:10px 14px;
-  border-radius:18px;
-  font-size:14px;
-  white-space:pre-wrap;
-  line-height:1.45;
-}
-.user .bubble{background:#1c50af;color:#fff;border-bottom-right-radius:6px}
-.bot .bubble{background:#fff;border:1px solid #ddd;border-bottom-left-radius:6px}
-.input{display:flex;border-top:1px solid #ddd;background:#fff}
-.input input{
-  flex:1;
-  border:none;
-  padding:14px;
-  font-size:14px;
-  outline:none;
-}
-.input button{
-  border:none;
-  background:#1c50af;
-  color:#fff;
-  padding:0 18px;
-  cursor:pointer;
-  font-size:14px;
-}
-.typing .bubble{
-  display:flex;
-  gap:4px;
-  align-items:center;
-}
-.dot{
-  width:7px;
-  height:7px;
-  border-radius:50%;
-  background:#888;
-  display:inline-block;
-  animation:bob 1.1s infinite ease-in-out;
-}
-.dot:nth-child(2){animation-delay:.15s}
-.dot:nth-child(3){animation-delay:.3s}
-@keyframes bob{
-  0%,80%,100%{transform:scale(.7);opacity:.5}
-  40%{transform:scale(1);opacity:1}
-}
-a{color:#1c50af}
-</style>
-</head>
-<body>
-<div class="chat">
-  <div class="header">B.O.B. — BLUE'S OPERATION BOT</div>
-  <div class="messages" id="messages"></div>
-  <div class="input">
-    <input id="input" type="text" placeholder="ASK ABOUT TOOLS, MRO, OR BLUE ASH..." />
-    <button id="sendBtn" onclick="send()">SEND</button>
-  </div>
-</div>
+app.get("/product-search", async (req, res) => {
+  try {
+    const query = String(req.query.q || "").trim();
 
-<script>
-const messages = document.getElementById("messages");
-const input = document.getElementById("input");
-const sendBtn = document.getElementById("sendBtn");
+    if (!query) {
+      return res.json({ results: [] });
+    }
 
-function add(text, who){
-  const row = document.createElement("div");
-  row.className = "row " + who;
-
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-  bubble.innerHTML = text;
-
-  row.appendChild(bubble);
-  messages.appendChild(row);
-  messages.scrollTop = messages.scrollHeight;
-}function showTyping(){
-  const row = document.createElement("div");
-  row.className = "row bot typing";
-
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-
-  for(let i=0;i<3;i++){
-    const dot = document.createElement("div");
-    dot.className = "dot";
-    bubble.appendChild(dot);
+    const results = await searchProducts(query);
+    return res.json({ results });
+  } catch (err) {
+    console.error("Product search route error:", err);
+    return res.status(500).json({ results: [] });
   }
-
-  row.appendChild(bubble);
-  messages.appendChild(row);
-  messages.scrollTop = messages.scrollHeight;
-
-  return row;
-}
-
-async function send(){
-  const text = input.value.trim();
-  if(!text) return;
-
-  add(text, "user");
-  input.value = "";
-  input.disabled = true;
-  sendBtn.disabled = true;
-
-  const typingEl = showTyping();
-
-  try{
-    const res = await fetch("/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text })
-    });
-
-    const data = await res.json();
-    typingEl.remove();
-    add(data.answer || "NO RESPONSE RECEIVED.", "bot");
-
-  }catch(e){
-    typingEl.remove();
-    add("ERROR CONNECTING TO SERVER.", "bot");
-  }
-
-  input.disabled = false;
-  sendBtn.disabled = false;
-  input.focus();
-}
-
-input.addEventListener("keydown", e=>{
-  if(e.key === "Enter") send();
-});
-
-add("HELLO, I AM B.O.B. HOW CAN I HELP YOU TODAY?", "bot");
-</script>
-</body>
-</html>
-`);
 });
 
 /* =========================
-   CHAT ROUTE (VECTOR-BASED)
+   WIDGET
+========================= */
+app.get("/widget", (_req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>B.O.B. Widget</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      background: transparent;
+      overflow: hidden;
+    }
+    #chat-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: #f7f9fc;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid #d9e2f2;
+    }
+    #chat-header {
+      background: #1c50af;
+      color: #fff;
+      padding: 14px 16px;
+      font-weight: bold;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #f7f9fc;
+    }
+    .message-row {
+      display: flex;
+      width: 100%;
+    }
+    .message-row.user {
+      justify-content: flex-end;
+    }
+    .message-row.bot {
+      justify-content: flex-start;
+    }
+    .bubble {
+      max-width: 82%;
+      padding: 12px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.45;
+      word-wrap: break-word;
+      white-space: normal;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .user .bubble {
+      background: #1c50af;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .bot .bubble {
+      background: #ffffff;
+      color: #1a1a1a;
+      border: 1px solid #d9e2f2;
+      border-bottom-left-radius: 4px;
+    }
+    .bubble a {
+      color: #1c50af;
+      text-decoration: underline;
+    }
+    #chat-input-area {
+      display: flex;
+      border-top: 1px solid #d9e2f2;
+      background: #fff;
+      padding: 0;
+      min-height: 58px;
+    }
+    #chat-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      padding: 0 14px;
+      font-size: 14px;
+      background: #fff;
+      color: #222;
+    }
+    #send-btn {
+      border: none;
+      background: #1c50af;
+      color: #fff;
+      font-weight: bold;
+      font-size: 14px;
+      padding: 0 18px;
+      cursor: pointer;
+    }
+    #send-btn:disabled {
+      opacity: 0.65;
+      cursor: default;
+    }
+    .typing {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      min-height: 18px;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #888;
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+    .dot:nth-child(2) { animation-delay: 0.15s; }
+    .dot:nth-child(3) { animation-delay: 0.3s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="chat-container">
+    <div id="chat-header">🤖 B.O.B. — Blue's Operation Bot</div>
+    <div id="chat-messages"></div>
+    <div id="chat-input-area">
+      <input id="chat-input" type="text" placeholder="Ask about tools, MRO, or Blue Ash..." />
+      <button id="send-btn">SEND</button>
+    </div>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById("chat-messages");
+    const inputEl = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("send-btn");
+    const history = [];
+
+    const greetings = [
+      "Hi there! 👋 I'm B.O.B. How can I help today?",
+      "Hello! 👋 What can I help you find today?",
+      "Hey there! 👋 Need help with tooling or MRO?",
+      "Welcome! 👋 Ask me about products, tooling, or Blue Ash."
+    ];
+	    function addMessage(html, who = "bot") {
+      const row = document.createElement("div");
+      row.className = "message-row " + who;
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = html;
+
+      row.appendChild(bubble);
+      messagesEl.appendChild(row);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function showTyping() {
+      const row = document.createElement("div");
+      row.className = "message-row bot";
+      row.id = "typing-row";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+
+      const typing = document.createElement("div");
+      typing.className = "typing";
+
+      for (let i = 0; i < 3; i++) {
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        typing.appendChild(dot);
+      }
+
+      bubble.appendChild(typing);
+      row.appendChild(bubble);
+      messagesEl.appendChild(row);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function hideTyping() {
+      const typingRow = document.getElementById("typing-row");
+      if (typingRow) typingRow.remove();
+    }
+
+    async function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      addMessage(text.replace(/</g, "&lt;").replace(/>/g, "&gt;"), "user");
+
+      history.push({ role: "user", content: text });
+      if (history.length > 8) history.shift();
+
+      inputEl.value = "";
+      inputEl.disabled = true;
+      sendBtn.disabled = true;
+      showTyping();
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: text,
+            history,
+          }),
+        });
+
+        const data = await res.json();
+        hideTyping();
+
+        const answer = data.answer || "Sorry, I ran into an issue.";
+        addMessage(answer, "bot");
+
+        history.push({ role: "assistant", content: answer });
+        if (history.length > 8) history.shift();
+      } catch (err) {
+        hideTyping();
+        addMessage("Sorry — I had trouble connecting just now.", "bot");
+      }
+
+      inputEl.disabled = false;
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendMessage();
+    });
+
+    addMessage(greetings[Math.floor(Math.random() * greetings.length)], "bot");
+  </script>
+</body>
+</html>`);
+});
+
+/* =========================
+   CHAT ROUTE
 ========================= */
 app.post("/chat", async (req, res) => {
   try {
     const message = String(req.body.message || "").trim();
+    const history = sanitizeHistory(req.body.history);
 
     if (!message) {
       return res.status(400).json({
-        answer: "PLEASE ENTER A MESSAGE.",
+        answer: "Please enter a message.",
       });
     }
 
     const lowerMessage = message.toLowerCase();
+    const vendor = detectVendor(message, history);
+    const guhringType = detectGuhringToolType(message, history);
 
     /* =========================
        SIMPLE RESPONSES
@@ -606,8 +955,7 @@ app.post("/chat", async (req, res) => {
       lowerMessage.includes("who created you")
     ) {
       return res.json({
-        answer:
-          "I WAS BUILT FOR BLUE ASH INDUSTRIAL SUPPLY TO HELP WITH TOOLING, PRODUCT QUESTIONS, AND GENERAL COMPANY INFORMATION.",
+        answer: "I was built for Blue Ash Industrial Supply to help with tooling, product questions, and general company information. 🤖",
       });
     }
 
@@ -616,21 +964,30 @@ app.post("/chat", async (req, res) => {
       lowerMessage === "hello" ||
       lowerMessage === "hey"
     ) {
+      const quickGreetings = [
+        "Hi there! 👋 How can I help?",
+        "Hello! 👋 What can I help you find today?",
+        "Hey there! 👋 Need help with tooling or MRO?",
+      ];
+
       return res.json({
-        answer: "HELLO, I AM B.O.B. HOW CAN I HELP YOU TODAY?",
+        answer: quickGreetings[Math.floor(Math.random() * quickGreetings.length)],
       });
     }
 
     /* =========================
-       PRODUCT SEARCH HELP
+       RELATED OPTIONS LOGIC
     ========================= */
-    let relatedOptionsHtml = "";
+    let productResults = [];
 
-    if (looksProductIntent(message)) {
+    if (vendor === "guhring" && guhringType) {
+      productResults = getGuhringCategoryResults(guhringType, lowerMessage);
+    } else if (looksProductIntent(message)) {
       const query = extractProductQuery(message);
-      const productResults = await searchProducts(query);
-      relatedOptionsHtml = formatRelatedOptionsHtml(productResults);
+      productResults = await searchProducts(query);
     }
+
+    const relatedOptionsHtml = formatRelatedOptionsHtml(productResults);
 
     /* =========================
        WEBSITE CONTEXT
@@ -638,59 +995,83 @@ app.post("/chat", async (req, res) => {
     const context = getContext(message);
 
     /* =========================
-       SYSTEM PROMPT
+       GUHRING GUIDANCE
     ========================= */
+    let guhringGuidance = "";
+    if (vendor === "guhring" && guhringType) {
+      const followUps = getGuhringFollowUp(guhringType);
+      guhringGuidance = `
+Guhring-specific guidance:
+- The user is asking about a GUHRING ${guhringType.replace(/_/g, " ")}.
+- Give a vendor-aware recommendation when possible.
+- Do not invent exact part numbers unless clearly supported by retrieved knowledge.
+- If the request is still broad, ask concise follow-up questions.
+- Good follow-up questions for this tool type:
+${followUps.map((q) => `  - ${q}`).join("\n")}
+`;
+    }
+
     const systemPrompt = `
 You are B.O.B. for Blue Ash Industrial Supply.
 
-You are a knowledgeable industrial tooling assistant.
-
-Your responsibilities:
-- Help users find tools and MRO products
-- Provide recommendations based on application
-- Use vector store knowledge when available
-- Use website context when relevant
+Your role:
+- Help users with industrial tooling and MRO questions
+- Answer questions about Blue Ash Industrial Supply
+- Use the provided website context when relevant
+- Use retrieved vector-store knowledge when available
+- Be concise, helpful, and technically competent
+- Keep the tone friendly and natural
+- Emojis are okay in greetings or light conversational moments, but do not overuse them
+- Do not claim to place orders or quotes
+- When needed, direct customers to call (513) 530-0188 or email sales@blueashsupply.com
 
 Behavior rules:
-- Do NOT say you can place orders or quotes
-- Always be concise and technical
-- Ask clarifying questions when needed
-- Prefer practical recommendations
-- If unsure, guide user toward better inputs
-
-Company contact:
-Phone: (513) 530-0188
-Email: sales@blueashsupply.com
+- Continue the current conversation naturally using prior message history
+- If the user answers a follow-up question with a short reply like "stainless" or "1/4", use the earlier conversation to interpret it
+- Prefer practical recommendations over vague marketing language
+- If the user is asking about products or categories, provide the most relevant options rather than broad unrelated groups
+${guhringGuidance}
 `;
 
-    const userPrompt = `
-USER MESSAGE:
+    const inputMessages = [
+      {
+        role: "system",
+        content: systemPrompt,
+      },
+      ...history,
+      {
+        role: "user",
+        content: `USER MESSAGE:
 ${message}
 
 WEBSITE CONTEXT:
-${context || "NONE"}
-`;
+${context || "NO ADDITIONAL CONTEXT FOUND."}
 
-    /* =========================
-       OPENAI REQUEST
-    ========================= */
-    const response = await client.responses.create({
+RELATED PRODUCT RESULTS:
+${productResults.length
+  ? productResults.map((p) => `${p.title} - ${p.url}`).join("\n")
+  : "NO RELATED PRODUCT RESULTS FOUND."}`,
+      },
+    ];
+	    const responseConfig = {
       model: OPENAI_MODEL,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      tools: [
+      input: inputMessages,
+    };
+
+    if (VECTOR_STORE_ID) {
+      responseConfig.tools = [
         {
           type: "file_search",
           vector_store_ids: [VECTOR_STORE_ID],
-        }
-      ]
-    });
+        },
+      ];
+    }
+
+    const response = await client.responses.create(responseConfig);
 
     let answer =
       response.output_text ||
-      "I'M SORRY, I COULDN'T GENERATE A RESPONSE.";
+      "Sorry, I couldn’t generate a response right now.";
 
     answer = cleanPlainText(answer);
 
@@ -699,19 +1080,17 @@ ${context || "NONE"}
     }
 
     return res.json({ answer });
-
   } catch (err) {
     console.error("CHAT ERROR:", err);
 
     return res.status(500).json({
-      answer:
-        "I'M SORRY, SOMETHING WENT WRONG WHILE PROCESSING THAT REQUEST.",
+      answer: "Sorry, something went wrong while processing that request.",
     });
   }
 });
 
 /* =========================
-   START SERVER
+   STARTUP
 ========================= */
 async function startServer() {
   try {
@@ -722,9 +1101,9 @@ async function startServer() {
     app.listen(port, () => {
       console.log(`B.O.B. RUNNING ON PORT ${port}`);
       console.log(`BASE URL: ${BASE_URL}`);
-      console.log(`VECTOR STORE: ${VECTOR_STORE_ID}`);
+      console.log(`VECTOR STORE: ${VECTOR_STORE_ID || "NOT SET"}`);
+      console.log(`MODEL: ${OPENAI_MODEL}`);
     });
-
   } catch (err) {
     console.error("STARTUP ERROR:", err);
     process.exit(1);
