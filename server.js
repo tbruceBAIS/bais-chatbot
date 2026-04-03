@@ -994,12 +994,15 @@ app.post("/chat", async (req, res) => {
       const followUps = getGuhringFollowUp(guhringType);
 
       guhringGuidance = `
-The user is asking about a GUHRING ${guhringType.replace(
-        /_/g,
-        " "
-      )}.
+The user is asking about a GUHRING ${guhringType.replace(/_/g, " ")}.
 Do NOT restart the conversation.
 Continue refining the same tool.
+
+If retrieved knowledge contains a likely exact Guhring match:
+- Return the PART # and DESCRIPTION clearly
+- Keep the recommendation brief
+- Do NOT include pricing
+- Do NOT give long generic tooling lectures unless the user asks for more detail
 
 Follow-up questions should be based on:
 ${followUps.map((q) => "- " + q).join("\n")}
