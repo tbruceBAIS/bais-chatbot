@@ -38,21 +38,20 @@ async function buildKnowledgeBase() {
 
   for (const url of urls) {
     try {
-      const res = await axios.get(url, { timeout: 20000 });
+      const res = await axios.get(url, { timeout: 12000 });
       const $ = cheerio.load(res.data);
 
       $("script, style, noscript").remove();
       const text = $("body").text().replace(/\s+/g, " ").trim();
 
       const pieces = text.match(/.{1,1200}/g) || [];
-
       for (const p of pieces) {
         chunks.push({ url, text: p });
       }
 
       console.log("Indexed:", url);
     } catch (err) {
-      console.log("Failed:", url, err.message);
+      console.log("Failed to index:", url, err.message);
     }
   }
 
@@ -85,7 +84,7 @@ function getContext(query) {
 }
 
 /* =========================
-   CLEAN TEXT
+   CLEANERS
 ========================= */
 function cleanPlainText(text) {
   return String(text || "")
@@ -116,7 +115,7 @@ function sanitizeHistory(history) {
         typeof item.content === "string" &&
         item.content.trim()
     )
-    .slice(-8)
+    .slice(-10)
     .map((item) => ({
       role: item.role,
       content: item.content.trim(),
@@ -157,21 +156,34 @@ function detectGuhringToolType(message, history = []) {
     combined.includes("end mills") ||
     combined.includes("endmill") ||
     combined.includes("endmills") ||
-    combined.includes("ballnose") ||
-    combined.includes("ball nose")
+    combined.includes("ball nose") ||
+    combined.includes("ballnose")
   ) {
     return "end_mill";
   }
 
-  if (combined.includes("reamer") || combined.includes("reamers") || combined.includes("reaming")) {
+  if (
+    combined.includes("reamer") ||
+    combined.includes("reamers") ||
+    combined.includes("reaming")
+  ) {
     return "reamer";
   }
 
-  if (combined.includes("tap") || combined.includes("taps") || combined.includes("tapping")) {
+  if (
+    combined.includes("tap") ||
+    combined.includes("taps") ||
+    combined.includes("tapping")
+  ) {
     return "tap";
   }
 
-  if (combined.includes("drill") || combined.includes("drills") || combined.includes("drilling")) {
+  if (
+    combined.includes("drill") ||
+    combined.includes("drills") ||
+    combined.includes("drilling") ||
+    combined.includes("jobber")
+  ) {
     return "drill";
   }
 
@@ -183,16 +195,16 @@ function getGuhringFollowUp(type) {
     case "drill":
       return [
         "Diameter and length",
-        "Material to drill (steel, stainless, aluminum, etc.)",
-        "Type (solid carbide, HSS, indexable, etc.)",
-        "Specific application or machine tool",
+        "Material to drill",
+        "Drill style or series preference",
+        "Application details",
       ];
     case "end_mill":
       return [
         "Diameter",
         "Material being cut",
-        "Operation (roughing, finishing, slotting, profiling)",
-        "End style needed (square end, ball nose, corner radius)",
+        "Operation",
+        "End style needed",
       ];
     case "tap":
       return [
@@ -248,8 +260,7 @@ function getGuhringCategoryResults(type, lowerMessage = "") {
       lowerMessage.includes("hss drills") ||
       lowerMessage.includes("co drill") ||
       lowerMessage.includes("co drills") ||
-      lowerMessage.includes("hss/co drill") ||
-      lowerMessage.includes("hss/co drills")
+      lowerMessage.includes("jobber")
     ) {
       return [
         { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" }
@@ -260,8 +271,7 @@ function getGuhringCategoryResults(type, lowerMessage = "") {
       lowerMessage.includes("center drill") ||
       lowerMessage.includes("center drills") ||
       lowerMessage.includes("spot drill") ||
-      lowerMessage.includes("spot drills") ||
-      lowerMessage.includes("center and spot")
+      lowerMessage.includes("spot drills")
     ) {
       return [
         { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
@@ -270,36 +280,14 @@ function getGuhringCategoryResults(type, lowerMessage = "") {
 
     return [
       { title: "Drilling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6201" },
-      { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" },
       { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" },
       { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" },
+      { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" },
       { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
     ];
   }
 
   if (type === "end_mill") {
-    if (
-      lowerMessage.includes("solid end mill") ||
-      lowerMessage.includes("solid carbide end mill") ||
-      lowerMessage.includes("solid milling")
-    ) {
-      return [
-        { title: "Solid Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6001" }
-      ];
-    }
-
-    if (
-      lowerMessage.includes("indexable mill") ||
-      lowerMessage.includes("indexable milling") ||
-      lowerMessage.includes("face mill") ||
-      lowerMessage.includes("face mills") ||
-      lowerMessage.includes("shell mill")
-    ) {
-      return [
-        { title: "Indexable Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6002" }
-      ];
-    }
-
     return [
       { title: "Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6000" },
       { title: "Solid Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6001" },
@@ -311,7 +299,6 @@ function getGuhringCategoryResults(type, lowerMessage = "") {
     return [
       { title: "Threading", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6300" },
       { title: "Taps", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6104" },
-      { title: "Dies", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6302" },
       { title: "Thread Mills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6303" }
     ];
   }
@@ -334,9 +321,7 @@ function getGuhringCategoryResults(type, lowerMessage = "") {
   }
 
   return [];
-}
-
-/* =========================
+}/* =========================
    PRODUCT SEARCH HELPERS
 ========================= */
 function isJunkTitle(title) {
@@ -365,7 +350,7 @@ function looksProductIntent(message) {
   const lower = String(message || "").toLowerCase();
 
   const productKeywords = [
-    "drill", "drills", "drilling",
+    "drill", "drills", "drilling", "jobber",
     "insert", "inserts",
     "mill", "mills", "milling", "end mill", "end mills",
     "tap", "taps",
@@ -395,7 +380,9 @@ function looksProductIntent(message) {
   ];
 
   return productKeywords.some((k) => lower.includes(k));
-}function extractProductQuery(message) {
+}
+
+function extractProductQuery(message) {
   const lowerMessage = String(message || "").toLowerCase();
 
   if (lowerMessage.includes("drill insert") || lowerMessage.includes("drill inserts")) return "drill inserts";
@@ -409,7 +396,8 @@ function looksProductIntent(message) {
     lowerMessage.includes("hss drill") ||
     lowerMessage.includes("hss drills") ||
     lowerMessage.includes("co drill") ||
-    lowerMessage.includes("co drills")
+    lowerMessage.includes("co drills") ||
+    lowerMessage.includes("jobber")
   ) return "hss/co drills";
   if (
     lowerMessage.includes("center drill") ||
@@ -589,7 +577,7 @@ function looksProductIntent(message) {
 async function searchProducts(query) {
   try {
     const url = `${BASE_URL}/showgroups.php?kw=${encodeURIComponent(query)}`;
-    const res = await axios.get(url, { timeout: 20000 });
+    const res = await axios.get(url, { timeout: 12000 });
     const $ = cheerio.load(res.data);
 
     const results = [];
@@ -655,9 +643,6 @@ app.get("/health", (_req, res) => {
   });
 });
 
-/* =========================
-   PRODUCT SEARCH ROUTE
-========================= */
 app.get("/product-search", async (req, res) => {
   try {
     const query = String(req.query.q || "").trim();
@@ -880,7 +865,7 @@ app.get("/widget", (_req, res) => {
       addMessage(text.replace(/</g, "&lt;").replace(/>/g, "&gt;"), "user");
 
       history.push({ role: "user", content: text });
-      if (history.length > 8) history.shift();
+      if (history.length > 10) history.shift();
 
       inputEl.value = "";
       inputEl.disabled = true;
@@ -906,7 +891,8 @@ app.get("/widget", (_req, res) => {
         addMessage(answer, "bot");
 
         history.push({ role: "assistant", content: answer });
-        if (history.length > 8) history.shift();
+        if (history.length > 10) history.shift();
+
       } catch (err) {
         hideTyping();
         addMessage("Sorry — I had trouble connecting just now.", "bot");
@@ -947,7 +933,7 @@ app.post("/chat", async (req, res) => {
     const guhringType = detectGuhringToolType(message, history);
 
     /* =========================
-       SIMPLE RESPONSES
+       SIMPLE RESPONSES (emoji restored)
     ========================= */
     if (
       lowerMessage.includes("who built you") ||
@@ -955,7 +941,8 @@ app.post("/chat", async (req, res) => {
       lowerMessage.includes("who created you")
     ) {
       return res.json({
-        answer: "I was built for Blue Ash Industrial Supply to help with tooling, product questions, and general company information. 🤖",
+        answer:
+          "I was built for Blue Ash Industrial Supply to help with tooling, product questions, and general company information. 🤖",
       });
     }
 
@@ -971,17 +958,21 @@ app.post("/chat", async (req, res) => {
       ];
 
       return res.json({
-        answer: quickGreetings[Math.floor(Math.random() * quickGreetings.length)],
+        answer:
+          quickGreetings[Math.floor(Math.random() * quickGreetings.length)],
       });
     }
 
     /* =========================
-       RELATED OPTIONS LOGIC
+       RELATED PRODUCTS (FIXED)
     ========================= */
     let productResults = [];
 
     if (vendor === "guhring" && guhringType) {
-      productResults = getGuhringCategoryResults(guhringType, lowerMessage);
+      productResults = getGuhringCategoryResults(
+        guhringType,
+        lowerMessage
+      );
     } else if (looksProductIntent(message)) {
       const query = extractProductQuery(message);
       productResults = await searchProducts(query);
@@ -990,7 +981,7 @@ app.post("/chat", async (req, res) => {
     const relatedOptionsHtml = formatRelatedOptionsHtml(productResults);
 
     /* =========================
-       WEBSITE CONTEXT
+       CONTEXT
     ========================= */
     const context = getContext(message);
 
@@ -998,62 +989,65 @@ app.post("/chat", async (req, res) => {
        GUHRING GUIDANCE
     ========================= */
     let guhringGuidance = "";
+
     if (vendor === "guhring" && guhringType) {
       const followUps = getGuhringFollowUp(guhringType);
+
       guhringGuidance = `
-Guhring-specific guidance:
-- The user is asking about a GUHRING ${guhringType.replace(/_/g, " ")}.
-- Give a vendor-aware recommendation when possible.
-- Do not invent exact part numbers unless clearly supported by retrieved knowledge.
-- If the request is still broad, ask concise follow-up questions.
-- Good follow-up questions for this tool type:
-${followUps.map((q) => `  - ${q}`).join("\n")}
+The user is asking about a GUHRING ${guhringType.replace(
+        /_/g,
+        " "
+      )}.
+Do NOT restart the conversation.
+Continue refining the same tool.
+
+Follow-up questions should be based on:
+${followUps.map((q) => "- " + q).join("\n")}
 `;
     }
 
     const systemPrompt = `
 You are B.O.B. for Blue Ash Industrial Supply.
 
-Your role:
-- Help users with industrial tooling and MRO questions
-- Answer questions about Blue Ash Industrial Supply
-- Use the provided website context when relevant
-- Use retrieved vector-store knowledge when available
-- Be concise, helpful, and technically competent
-- Keep the tone friendly and natural
-- Emojis are okay in greetings or light conversational moments, but do not overuse them
-- Do not claim to place orders or quotes
-- When needed, direct customers to call (513) 530-0188 or email sales@blueashsupply.com
+Tone:
+- Friendly, natural, conversational
+- Use emojis lightly where appropriate (especially greetings)
 
-Behavior rules:
-- Continue the current conversation naturally using prior message history
-- If the user answers a follow-up question with a short reply like "stainless" or "1/4", use the earlier conversation to interpret it
-- Prefer practical recommendations over vague marketing language
-- If the user is asking about products or categories, provide the most relevant options rather than broad unrelated groups
+Behavior:
+- ALWAYS use prior conversation context
+- If user replies with short answers like "steel", "1/4", etc → continue previous request
+- NEVER restart the conversation if a tool was already identified
+- DO NOT ask what they are looking for again if already known
+
+Focus:
+- Provide practical tooling recommendations
+- Keep answers clear and helpful
+- Suggest next steps when needed
+
 ${guhringGuidance}
 `;
 
     const inputMessages = [
-      {
-        role: "system",
-        content: systemPrompt,
-      },
+      { role: "system", content: systemPrompt },
       ...history,
       {
         role: "user",
-        content: `USER MESSAGE:
+        content: `
+USER MESSAGE:
 ${message}
 
 WEBSITE CONTEXT:
-${context || "NO ADDITIONAL CONTEXT FOUND."}
+${context || "none"}
 
-RELATED PRODUCT RESULTS:
-${productResults.length
-  ? productResults.map((p) => `${p.title} - ${p.url}`).join("\n")
-  : "NO RELATED PRODUCT RESULTS FOUND."}`,
+RELATED PRODUCTS:
+${
+  productResults.length
+    ? productResults.map((p) => `${p.title} - ${p.url}`).join("\n")
+    : "none"
+}
+`,
       },
-    ];
-	    const responseConfig = {
+    ];    const responseConfig = {
       model: OPENAI_MODEL,
       input: inputMessages,
     };
@@ -1096,13 +1090,18 @@ async function startServer() {
   try {
     console.log("STARTING B.O.B...");
 
-    await buildKnowledgeBase();
-
-    app.listen(port, () => {
+    app.listen(port, async () => {
       console.log(`B.O.B. RUNNING ON PORT ${port}`);
       console.log(`BASE URL: ${BASE_URL}`);
       console.log(`VECTOR STORE: ${VECTOR_STORE_ID || "NOT SET"}`);
       console.log(`MODEL: ${OPENAI_MODEL}`);
+
+      try {
+        await buildKnowledgeBase();
+        console.log("KNOWLEDGE BASE READY");
+      } catch (err) {
+        console.error("KNOWLEDGE BASE ERROR:", err.message);
+      }
     });
   } catch (err) {
     console.error("STARTUP ERROR:", err);
