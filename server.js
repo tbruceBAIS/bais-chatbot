@@ -478,28 +478,6 @@ function detectGuhringFamilyAndFilters(message, history = []) {
   };
 }
 
-  const filters = [];
-  if (family && GUHRING_RULES[family]) {
-    for (const [filterKey, terms] of Object.entries(GUHRING_RULES[family].exactFilters)) {
-      if (terms.some((term) => combined.includes(term))) {
-        filters.push(filterKey);
-      }
-    }
-  }
-
-  const materialHints = [];
-  const materials = ["stainless", "steel", "aluminum", "cast iron", "titanium", "inconel", "hardened"];
-  for (const m of materials) {
-    if (combined.includes(m)) materialHints.push(m);
-  }
-
-  return {
-    family,
-    filters,
-    materialHints
-  };
-}
-
 function getGuhringRelatedGroupsFromRules(family, message = "") {
   if (!family || !GUHRING_RULES[family]) return [];
   const lower = normalizeText(message);
