@@ -193,6 +193,156 @@ function normalizeText(text) {
     .trim();
 }
 
+function detectOpenPreferences(message, history = []) {
+  const combined = normalizeText([
+    String(message || ""),
+    ...history.map((h) => String(h.content || ""))
+  ].join(" "));
+
+  return {
+    coatingOpen:
+      combined.includes("no coating preference") ||
+      combined.includes("no coating") ||
+      combined.includes("any coating") ||
+      combined.includes("coating does not matter"),
+    seriesOpen:
+      combined.includes("any series") ||
+      combined.includes("series does not matter"),
+    substrateOpen:
+      combined.includes("any substrate") ||
+      combined.includes("substrate does not matter"),
+    lengthOpen:
+      combined.includes("any length") ||
+      combined.includes("length does not matter"),
+    materialOpen:
+      combined.includes("any material") ||
+      combined.includes("material does not matter")
+  };
+}
+
+function detectRequiredFilters(message, history = []) {
+  const combined = normalizeText([
+    String(message || ""),
+    ...history.map((h) => String(h.content || ""))
+  ].join(" "));
+
+  const openPrefs = detectOpenPreferences(message, history);
+
+  const required = {
+    size: [],
+    material: [],
+    coating: [],
+    style: [],
+    substrate: [],
+    length: [],
+    holeType: [],
+    threadType: []
+  };
+
+  const fractions = combined.match(/\d+\/\d+/g) || [];
+  const decimals = combined.match(/\d+\.\d+/g) || [];
+  const metric = combined.match(/\b\d+\s?mm\b/g) || [];
+
+  required.size.push(...fractions, ...decimals, ...metric);
+
+  if (!openPrefs.materialOpen) {
+    const materials = [
+      "stainless",
+      "steel",
+      "aluminum",
+      "cast iron",
+      "titanium",
+      "inconel",
+      "hardened"
+    ];
+    for (const m of materials) {
+      if (combined.includes(m)) required.material.push(m);
+    }
+  }
+
+  if (!openPrefs.coatingOpen) {
+    const coatings = [
+      "tin",
+      "tialn",
+      "ticn",
+      "firex",
+      "nano",
+      "bright finish",
+      "molyglide"
+    ];
+    for (const c of coatings) {
+      if (combined.includes(c)) required.coating.push(c);
+    }
+  }
+
+  if (!openPrefs.substrateOpen) {
+    const substrates = [
+      "cobalt",
+      "hsco",
+      "hss-e",
+      "hsse",
+      "m35",
+      "m42",
+      "solid carbide",
+      "carbide",
+      "pm cobalt"
+    ];
+    for (const s of substrates) {
+      if (combined.includes(s)) required.substrate.push(s);
+    }
+  }
+
+  if (!openPrefs.lengthOpen) {
+    const lengths = [
+      "jobber",
+      "jobber length",
+      "standard length",
+      "stub",
+      "screw machine",
+      "short length",
+      "deep hole"
+    ];
+    for (const l of lengths) {
+      if (combined.includes(l)) required.length.push(l);
+    }
+  }
+
+  const styles = [
+    "parabolic",
+    "spot",
+    "spot drill",
+    "center drill",
+    "nc spotting",
+    "insert drill",
+    "form tap",
+    "cut tap",
+    "spiral flute",
+    "spiral point",
+    "ball nose",
+    "ballnose",
+    "square end",
+    "corner radius",
+    "roughing",
+    "rougher"
+  ];
+  for (const s of styles) {
+    if (combined.includes(s)) required.style.push(s);
+  }
+
+  if (combined.includes("blind hole") || combined.includes("blind")) {
+    required.holeType.push("blind");
+  }
+  if (combined.includes("through hole") || combined.includes("through")) {
+    required.holeType.push("through");
+  }
+
+  if (combined.includes("metric")) required.threadType.push("metric");
+  if (combined.includes("unc")) required.threadType.push("unc");
+  if (combined.includes("unf")) required.threadType.push("unf");
+
+  return { required, openPrefs };
+}
+
 const GUHRING_RULES = {
   drill: {
     aliases: [
@@ -309,6 +459,25 @@ function detectGuhringFamilyAndFilters(message, history = []) {
     }
   }
 
+  const matchedFilters = [];
+  if (family && GUHRING_RULES[family]) {
+    for (const [filterKey, terms] of Object.entries(GUHRING_RULES[family].exactFilters)) {
+      if (terms.some((term) => combined.includes(term))) {
+        matchedFilters.push(filterKey);
+      }
+    }
+  }
+
+  const { required, openPrefs } = detectRequiredFilters(message, history);
+
+  return {
+    family,
+    matchedFilters,
+    required,
+    openPrefs
+  };
+}
+
   const filters = [];
   if (family && GUHRING_RULES[family]) {
     for (const [filterKey, terms] of Object.entries(GUHRING_RULES[family].exactFilters)) {
@@ -370,29 +539,39 @@ function formatGuhringMatchInstructions(familyInfo) {
   if (!familyInfo || !familyInfo.family) return "";
 
   const familyLabel = familyInfo.family.replace(/_/g, " ").toUpperCase();
-  const filtersText = familyInfo.filters.length
-    ? familyInfo.filters.join(", ").toUpperCase()
+  const matchedFiltersText = familyInfo.matchedFilters.length
+    ? familyInfo.matchedFilters.join(", ").toUpperCase()
     : "NONE";
-  const materialText = familyInfo.materialHints.length
-    ? familyInfo.materialHints.join(", ").toUpperCase()
-    : "NONE";
+
+  const requiredText = Object.entries(familyInfo.required)
+    .filter(([, arr]) => arr.length)
+    .map(([key, arr]) => `${key.toUpperCase()}: ${arr.join(", ").toUpperCase()}`)
+    .join("\n");
+
+  const openText = Object.entries(familyInfo.openPrefs)
+    .filter(([, val]) => val)
+    .map(([key]) => key.toUpperCase())
+    .join(", ");
 
   return `
 GUHRING MATCHING MODE:
 - REQUIRED FAMILY: ${familyLabel}
-- REQUESTED FILTERS: ${filtersText}
-- MATERIAL HINTS: ${materialText}
+- MATCHED TERMINOLOGY FILTERS: ${matchedFiltersText}
+- HARD FILTERS:
+${requiredText || "NONE"}
+- OPEN FILTERS: ${openText || "NONE"}
 
 MATCH PRIORITY:
-1. Exact match within the required family
-2. Closest acceptable match within the same family
+1. Exact match within the required family and required filters
+2. Closest acceptable match within the same family when exact match is not available
 3. Ask one short follow-up question if no strong same-family match exists
 
 HARD RULES:
 - Never switch families
 - Never return a non-${familyLabel} product as the answer
-- If the retrieved result conflicts with requested filters, do not present it as exact
-- If only a partial match exists, label it as "Closest match"
+- Treat user-specified filters as required unless they explicitly said no preference
+- If a retrieved result conflicts with required filters, do not present it as exact
+- Do not relax required filters on your own
 
 OUTPUT RULES:
 - If exact match is found, return exactly in this style:
@@ -425,6 +604,29 @@ function buildGuhringPromptAddOn(message, history = []) {
       promptText: ""
     };
   }
+
+  const followUps = getGuhringFollowUp(familyInfo.family);
+
+  const promptText = `
+The user is asking about a GUHRING ${familyInfo.family.replace(/_/g, " ")}.
+Continue refining the same request using conversation history.
+
+${formatGuhringMatchInstructions(familyInfo)}
+
+If no exact match is clearly supported:
+- Return the closest match only if it still satisfies the family and the most important required filters
+- Otherwise ask one short follow-up question
+- Do not rely on pricing or price-file data
+
+Preferred follow-up topics:
+${followUps.map((q) => `- ${q}`).join("\n")}
+`;
+
+  return {
+    familyInfo,
+    promptText
+  };
+}
 
   const followUps = getGuhringFollowUp(familyInfo.family);
 
@@ -1057,7 +1259,8 @@ app.post("/chat", async (req, res) => {
 
     const lowerMessage = message.toLowerCase();
     const vendor = detectVendor(message, history);
-const familyInfo = detectGuhringFamilyAndFilters(message, history);
+const guhringMode = buildGuhringPromptAddOn(message, history);
+const familyInfo = guhringMode.familyInfo;
 const guhringType = familyInfo.family;
 
     /* =========================
@@ -1119,7 +1322,6 @@ if (vendor === "guhring" && guhringType) {
     let guhringGuidance = "";
 
 if (vendor === "guhring" && guhringType) {
-  const guhringMode = buildGuhringPromptAddOn(message, history);
   guhringGuidance = guhringMode.promptText || "";
 }
 
@@ -1137,8 +1339,9 @@ Behavior:
 - NEVER restart the conversation if a tool was already identified
 - DO NOT ask what they are looking for again if already known
 - Never switch tool families unless the user clearly changes the request
+- Treat user-specified requirements as hard filters unless the user explicitly says no preference
 - If a likely exact product is supported, return it cleanly and briefly
-- If no exact product is supported, return the closest match only if it still fits the correct family
+- If no exact product is supported, return the closest match only if it still fits the correct family and required filters
 - If neither exact nor close fit is clear, ask one short follow-up question
 
 Product output rules:
@@ -1161,6 +1364,7 @@ DESCRIPTION: [tool description in ALL CAPS]
 - Do not mention list price, cost, net price, surcharge, or availability unless the user explicitly asks
 - Do not return long generic tooling lectures when a likely product answer is available
 - Do not return more than one product unless the user asks
+- Do not rely on price-file data
 
 Focus:
 - Provide practical tooling recommendations
