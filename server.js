@@ -587,29 +587,6 @@ function buildGuhringPromptAddOn(message, history = []) {
 
   const promptText = `
 The user is asking about a GUHRING ${familyInfo.family.replace(/_/g, " ")}.
-Continue refining the same request using conversation history.
-
-${formatGuhringMatchInstructions(familyInfo)}
-
-If no exact match is clearly supported:
-- Return the closest match only if it still satisfies the family and the most important required filters
-- Otherwise ask one short follow-up question
-- Do not rely on pricing or price-file data
-
-Preferred follow-up topics:
-${followUps.map((q) => `- ${q}`).join("\n")}
-`;
-
-  return {
-    familyInfo,
-    promptText
-  };
-}
-
-  const followUps = getGuhringFollowUp(familyInfo.family);
-
-  const promptText = `
-The user is asking about a GUHRING ${familyInfo.family.replace(/_/g, " ")}.
 Continue refining the same tool request using conversation history.
 
 ${formatGuhringMatchInstructions(familyInfo)}
