@@ -139,57 +139,6 @@ function detectVendor(message, history = []) {
   return null;
 }
 
-function detectGuhringToolType(message, history = []) {
-  const combined = [
-    String(message || ""),
-    ...history.map((h) => String(h.content || "")),
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  if (combined.includes("thread mill") || combined.includes("thread mills")) {
-    return "thread_mill";
-  }
-
-  if (
-    combined.includes("end mill") ||
-    combined.includes("end mills") ||
-    combined.includes("endmill") ||
-    combined.includes("endmills") ||
-    combined.includes("ball nose") ||
-    combined.includes("ballnose")
-  ) {
-    return "end_mill";
-  }
-
-  if (
-    combined.includes("reamer") ||
-    combined.includes("reamers") ||
-    combined.includes("reaming")
-  ) {
-    return "reamer";
-  }
-
-  if (
-    combined.includes("tap") ||
-    combined.includes("taps") ||
-    combined.includes("tapping")
-  ) {
-    return "tap";
-  }
-
-  if (
-    combined.includes("drill") ||
-    combined.includes("drills") ||
-    combined.includes("drilling") ||
-    combined.includes("jobber")
-  ) {
-    return "drill";
-  }
-
-  return null;
-}
-
 function getGuhringFollowUp(type) {
   switch (type) {
     case "drill":
@@ -236,92 +185,270 @@ function getGuhringFollowUp(type) {
   }
 }
 
-function getGuhringCategoryResults(type, lowerMessage = "") {
-  if (type === "drill") {
-    if (lowerMessage.includes("drill insert") || lowerMessage.includes("drill inserts")) {
-      return [
-        { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" }
-      ];
-    }
+function normalizeText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9/.\-\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-    if (
-      lowerMessage.includes("solid carbide drill") ||
-      lowerMessage.includes("solid carbide drills") ||
-      lowerMessage.includes("carbide drill") ||
-      lowerMessage.includes("carbide drills")
-    ) {
-      return [
-        { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" }
-      ];
-    }
-
-    if (
-      lowerMessage.includes("hss drill") ||
-      lowerMessage.includes("hss drills") ||
-      lowerMessage.includes("co drill") ||
-      lowerMessage.includes("co drills") ||
-      lowerMessage.includes("jobber")
-    ) {
-      return [
-        { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" }
-      ];
-    }
-
-    if (
-      lowerMessage.includes("center drill") ||
-      lowerMessage.includes("center drills") ||
-      lowerMessage.includes("spot drill") ||
-      lowerMessage.includes("spot drills")
-    ) {
-      return [
-        { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
-      ];
-    }
-
-    return [
+const GUHRING_RULES = {
+  drill: {
+    aliases: [
+      "drill", "drills", "drilling", "jobber", "jobber drill", "jobber drills",
+      "screw machine", "stub drill", "stub drills", "spot drill", "spot drills",
+      "center drill", "center drills", "nc spotting", "deep hole", "insert drill"
+    ],
+    exactFilters: {
+      jobber: ["jobber", "standard length", "jobber length"],
+      cobalt: ["cobalt", "hsco", "hssco", "m35", "hss-e", "hsse"],
+      carbide: ["solid carbide", "carbide", "ratio drill"],
+      stub: ["stub", "screw machine", "short length"],
+      parabolic: ["parabolic"],
+      spot: ["spot", "spot drill", "spotting", "center drill", "nc spotting"],
+      deepHole: ["deep hole", "gun drill"],
+      insert: ["insert drill", "insert drilling", "replaceable tip"]
+    },
+    relatedGroups: [
       { title: "Drilling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6201" },
       { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" },
       { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" },
       { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" },
       { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
-    ];
-  }
+    ]
+  },
 
-  if (type === "end_mill") {
-    return [
+  end_mill: {
+    aliases: [
+      "end mill", "end mills", "endmill", "endmills", "milling",
+      "ball nose", "ballnose", "square end", "corner radius", "rougher", "roughing"
+    ],
+    exactFilters: {
+      ball: ["ball nose", "ballnose", "ball"],
+      square: ["square end", "square"],
+      cornerRadius: ["corner radius"],
+      roughing: ["roughing", "rougher"],
+      finishing: ["finishing", "finish"]
+    },
+    relatedGroups: [
       { title: "Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6000" },
       { title: "Solid Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6001" },
       { title: "Indexable Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6002" }
-    ];
-  }
+    ]
+  },
 
-  if (type === "tap") {
-    return [
+  tap: {
+    aliases: [
+      "tap", "taps", "tapping", "form tap", "cut tap", "spiral flute", "spiral point"
+    ],
+    exactFilters: {
+      form: ["form tap", "forming tap", "roll tap"],
+      cut: ["cut tap", "cutting tap"],
+      spiralFlute: ["spiral flute"],
+      spiralPoint: ["spiral point", "gun tap"],
+      blind: ["blind hole", "blind"],
+      through: ["through hole", "through"]
+    },
+    relatedGroups: [
       { title: "Threading", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6300" },
       { title: "Taps", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6104" },
       { title: "Thread Mills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6303" }
-    ];
-  }
+    ]
+  },
 
-  if (type === "thread_mill") {
-    return [
+  thread_mill: {
+    aliases: [
+      "thread mill", "thread mills", "threadmill", "threadmilling",
+      "drill thread mill", "micro thread mill"
+    ],
+    exactFilters: {
+      drillThread: ["drill thread mill", "drill/thread mill"],
+      micro: ["micro thread mill", "micro"],
+      hardened: ["hardened", "hard steel"]
+    },
+    relatedGroups: [
       { title: "Thread Mills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6303" },
       { title: "Threading", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6300" },
       { title: "Dies", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6302" }
-    ];
-  }
+    ]
+  },
 
-  if (type === "reamer") {
-    return [
+  reamer: {
+    aliases: ["reamer", "reamers", "reaming"],
+    exactFilters: {
+      solid: ["solid reamer", "solid"],
+      indexable: ["indexable reamer", "indexable"]
+    },
+    relatedGroups: [
       { title: "Reaming", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6202" },
       { title: "Solid/Brazed Reamers", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6220" },
       { title: "Indexable Reamer Bodies", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/98" },
       { title: "Indexable Reamer Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/94" }
-    ];
+    ]
+  }
+};
+
+function detectGuhringFamilyAndFilters(message, history = []) {
+  const combined = normalizeText([
+    String(message || ""),
+    ...history.map((h) => String(h.content || ""))
+  ].join(" "));
+
+  let family = null;
+  let familyScore = -1;
+
+  for (const [key, rule] of Object.entries(GUHRING_RULES)) {
+    let score = 0;
+    for (const alias of rule.aliases) {
+      if (combined.includes(alias)) score += alias.split(" ").length;
+    }
+    if (score > familyScore) {
+      familyScore = score;
+      family = score > 0 ? key : null;
+    }
   }
 
-  return [];
-}/* =========================
+  const filters = [];
+  if (family && GUHRING_RULES[family]) {
+    for (const [filterKey, terms] of Object.entries(GUHRING_RULES[family].exactFilters)) {
+      if (terms.some((term) => combined.includes(term))) {
+        filters.push(filterKey);
+      }
+    }
+  }
+
+  const materialHints = [];
+  const materials = ["stainless", "steel", "aluminum", "cast iron", "titanium", "inconel", "hardened"];
+  for (const m of materials) {
+    if (combined.includes(m)) materialHints.push(m);
+  }
+
+  return {
+    family,
+    filters,
+    materialHints
+  };
+}
+
+function getGuhringRelatedGroupsFromRules(family, message = "") {
+  if (!family || !GUHRING_RULES[family]) return [];
+  const lower = normalizeText(message);
+
+  if (family === "drill") {
+    if (lower.includes("jobber") || lower.includes("standard length")) {
+      return [
+        { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" }
+      ];
+    }
+    if (lower.includes("cobalt") || lower.includes("hsco") || lower.includes("m35")) {
+      return [
+        { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" }
+      ];
+    }
+    if (lower.includes("spot") || lower.includes("center")) {
+      return [
+        { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
+      ];
+    }
+    if (lower.includes("insert")) {
+      return [
+        { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" }
+      ];
+    }
+    if (lower.includes("carbide")) {
+      return [
+        { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" }
+      ];
+    }
+  }
+
+  return GUHRING_RULES[family].relatedGroups || [];
+}
+
+function formatGuhringMatchInstructions(familyInfo) {
+  if (!familyInfo || !familyInfo.family) return "";
+
+  const familyLabel = familyInfo.family.replace(/_/g, " ").toUpperCase();
+  const filtersText = familyInfo.filters.length
+    ? familyInfo.filters.join(", ").toUpperCase()
+    : "NONE";
+  const materialText = familyInfo.materialHints.length
+    ? familyInfo.materialHints.join(", ").toUpperCase()
+    : "NONE";
+
+  return `
+GUHRING MATCHING MODE:
+- REQUIRED FAMILY: ${familyLabel}
+- REQUESTED FILTERS: ${filtersText}
+- MATERIAL HINTS: ${materialText}
+
+MATCH PRIORITY:
+1. Exact match within the required family
+2. Closest acceptable match within the same family
+3. Ask one short follow-up question if no strong same-family match exists
+
+HARD RULES:
+- Never switch families
+- Never return a non-${familyLabel} product as the answer
+- If the retrieved result conflicts with requested filters, do not present it as exact
+- If only a partial match exists, label it as "Closest match"
+
+OUTPUT RULES:
+- If exact match is found, return exactly in this style:
+
+PART #: [part number]
+DESCRIPTION: [tool description in ALL CAPS]
+
+[One or two short sentences max]
+
+- If only closest match is found, return exactly in this style:
+
+CLOSEST MATCH
+PART #: [part number]
+DESCRIPTION: [tool description in ALL CAPS]
+
+[One or two short sentences max]
+
+- Do not include pricing
+- Do not include long paragraphs
+- Do not include more than one product unless the user asks
+`;
+}
+
+function buildGuhringPromptAddOn(message, history = []) {
+  const familyInfo = detectGuhringFamilyAndFilters(message, history);
+
+  if (!familyInfo.family) {
+    return {
+      familyInfo,
+      promptText: ""
+    };
+  }
+
+  const followUps = getGuhringFollowUp(familyInfo.family);
+
+  const promptText = `
+The user is asking about a GUHRING ${familyInfo.family.replace(/_/g, " ")}.
+Continue refining the same tool request using conversation history.
+
+${formatGuhringMatchInstructions(familyInfo)}
+
+If no exact match is clearly supported by retrieved knowledge:
+- Return the closest match only if it still fits the family and most important filters
+- Otherwise ask one short follow-up question
+
+Preferred follow-up topics:
+${followUps.map((q) => `- ${q}`).join("\n")}
+`;
+
+  return {
+    familyInfo,
+    promptText
+  };
+}
+
+/* =========================
    PRODUCT SEARCH HELPERS
 ========================= */
 function isJunkTitle(title) {
@@ -930,7 +1057,8 @@ app.post("/chat", async (req, res) => {
 
     const lowerMessage = message.toLowerCase();
     const vendor = detectVendor(message, history);
-    const guhringType = detectGuhringToolType(message, history);
+const familyInfo = detectGuhringFamilyAndFilters(message, history);
+const guhringType = familyInfo.family;
 
     /* =========================
        SIMPLE RESPONSES (emoji restored)
@@ -968,15 +1096,15 @@ app.post("/chat", async (req, res) => {
     ========================= */
     let productResults = [];
 
-    if (vendor === "guhring" && guhringType) {
-      productResults = getGuhringCategoryResults(
-        guhringType,
-        lowerMessage
-      );
-    } else if (looksProductIntent(message)) {
-      const query = extractProductQuery(message);
-      productResults = await searchProducts(query);
-    }
+if (vendor === "guhring" && guhringType) {
+  productResults = getGuhringRelatedGroupsFromRules(
+    guhringType,
+    [message, ...history.map((h) => h.content || "")].join(" ")
+  );
+} else if (looksProductIntent(message)) {
+  const query = extractProductQuery(message);
+  productResults = await searchProducts(query);
+}
 
     const relatedOptionsHtml = formatRelatedOptionsHtml(productResults);
 
@@ -991,32 +1119,8 @@ app.post("/chat", async (req, res) => {
     let guhringGuidance = "";
 
 if (vendor === "guhring" && guhringType) {
-  const followUps = getGuhringFollowUp(guhringType);
-
-  guhringGuidance = `
-The user is asking about a GUHRING ${guhringType.replace(/_/g, " ")}.
-Do NOT restart the conversation.
-Continue refining the same tool.
-
-IMPORTANT TOOL FAMILY RULES:
-- If the user is asking for a drill, only return drill-family answers
-- Never return an end mill for a drill request
-- Never return a tap, reamer, or thread mill for a drill request
-- If the exact drill is unclear, ask a short follow-up question instead of switching tool families
-
-PRODUCT FORMAT RULES:
-- If retrieved knowledge contains a likely product match, return:
-  PART #: [part number]
-  DESCRIPTION: [tool description]
-  Then 1-2 short sentences only
-- Keep product descriptions in ALL CAPS
-- Do NOT include pricing
-- Do NOT mention list price, net price, cost, surcharge, or any pricing language
-- Do NOT give long generic tooling lectures when a likely match is available
-
-Follow-up questions should be based on:
-${followUps.map((q) => "- " + q).join("\n")}
-`;
+  const guhringMode = buildGuhringPromptAddOn(message, history);
+  guhringGuidance = guhringMode.promptText || "";
 }
 
     const systemPrompt = `
@@ -1029,25 +1133,34 @@ Tone:
 
 Behavior:
 - ALWAYS use prior conversation context
-- If the user replies with short answers like "steel", "1/4", "cobalt", "jobber", or "no coating", continue the previous request
+- If the user replies with short answers like "steel", "1/4", "cobalt", "jobber", "standard length", or "no coating", continue the previous request
 - NEVER restart the conversation if a tool was already identified
 - DO NOT ask what they are looking for again if already known
-- If the user asks for a drill, stay in the drill family only
-- If the user asks for an end mill, stay in the end mill family only
-- If the user asks for a tap, stay in the tap family only
-- If the user asks for a reamer, stay in the reamer family only
-- If the user asks for a thread mill, stay in the thread mill family only
 - Never switch tool families unless the user clearly changes the request
+- If a likely exact product is supported, return it cleanly and briefly
+- If no exact product is supported, return the closest match only if it still fits the correct family
+- If neither exact nor close fit is clear, ask one short follow-up question
 
 Product output rules:
-- When a likely exact product is found, return only:
-  PART #: [part number]
-  DESCRIPTION: [tool description in ALL CAPS]
-  Then 1-2 short sentences of recommendation text
-- Keep the response short when a likely match is found
-- Do NOT include pricing
-- Do NOT mention list price, net price, cost, surcharge, or availability unless the user explicitly asks
-- If no likely exact product is found, ask one short follow-up question
+- Exact match format:
+
+PART #: [part number]
+DESCRIPTION: [tool description in ALL CAPS]
+
+[One or two short sentences max]
+
+- Closest match format:
+
+CLOSEST MATCH
+PART #: [part number]
+DESCRIPTION: [tool description in ALL CAPS]
+
+[One or two short sentences max]
+
+- Do not include pricing
+- Do not mention list price, cost, net price, surcharge, or availability unless the user explicitly asks
+- Do not return long generic tooling lectures when a likely product answer is available
+- Do not return more than one product unless the user asks
 
 Focus:
 - Provide practical tooling recommendations
@@ -1076,7 +1189,9 @@ ${
 }
 `,
       },
-    ];    const responseConfig = {
+    ];    
+	  
+	  const responseConfig = {
       model: OPENAI_MODEL,
       input: inputMessages,
     };
