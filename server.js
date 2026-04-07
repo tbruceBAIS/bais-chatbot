@@ -1224,12 +1224,22 @@ app.get("/widget", (_req, res) => {
         });
 
         const data = await res.json();
-        hideTyping();
+hideTyping();
 
-        const answer = data.answer || "Sorry, I ran into an issue.";
-        addMessage(answer, "bot");
+const answer = data.answer || "Sorry, I ran into an issue.";
+addMessage(
+  answer
+    .replace(/\n/g, "<br>")
+    .replace(/EXACT MATCH/g, "<strong>EXACT MATCH</strong>")
+    .replace(/CLOSEST MATCH/g, "<strong>CLOSEST MATCH</strong>")
+    .replace(/Part #:/g, "<strong>Part #:</strong>")
+    .replace(/Description:/g, "<strong>Description:</strong>")
+    .replace(/Fit:/g, "<strong>Fit:</strong>")
+    .replace(/Related:/g, "<strong>Related:</strong>"),
+  "bot"
+);
 
-        history.push({ role: "assistant", content: answer });
+history.push({ role: "assistant", content: answer });
         if (history.length > 10) history.shift();
 
       } catch (err) {
