@@ -470,6 +470,43 @@ function detectGuhringFamilyAndFilters(message, history = []) {
 
   const { required, openPrefs } = detectRequiredFilters(message, history);
 
+    if (family === "drill") {
+    const hasSpecificDrillSubtype =
+      matchedFilters.includes("spot") ||
+      matchedFilters.includes("insert") ||
+      matchedFilters.includes("deepHole") ||
+      matchedFilters.includes("stub") ||
+      matchedFilters.includes("parabolic");
+
+    const hasAnyDrillLength =
+      required.length.length > 0 || matchedFilters.includes("jobber");
+
+    if (!hasSpecificDrillSubtype && !hasAnyDrillLength) {
+      matchedFilters.push("jobber");
+      if (!required.length.includes("jobber")) {
+        required.length.push("jobber");
+      }
+    }
+  }
+
+  if (family === "drill" && required.material.includes("stainless")) {
+    const hasCobaltLike =
+      required.substrate.includes("cobalt") ||
+      required.substrate.includes("hsco") ||
+      required.substrate.includes("hss-e") ||
+      required.substrate.includes("hsse") ||
+      required.substrate.includes("m35") ||
+      required.substrate.includes("m42");
+
+    const hasCarbideLike =
+      required.substrate.includes("solid carbide") ||
+      required.substrate.includes("carbide");
+
+    if (!hasCobaltLike && !hasCarbideLike && !openPrefs.substrateOpen) {
+      required.substrate.push("cobalt");
+    }
+  }
+
   return {
     family,
     matchedFilters,
@@ -554,10 +591,11 @@ HARD RULES:
 OUTPUT RULES:
 - If exact match is found, return exactly in this style:
 
+EXACT MATCH
 PART #: [part number]
 DESCRIPTION: [tool description in ALL CAPS]
 
-[One or two short sentences max]
+[One short sentence explaining why it fits]
 
 - If only closest match is found, return exactly in this style:
 
@@ -565,7 +603,14 @@ CLOSEST MATCH
 PART #: [part number]
 DESCRIPTION: [tool description in ALL CAPS]
 
-[One or two short sentences max]
+[One short sentence explaining what matches and what is approximate]
+
+- Use "PART #:" exactly
+- Keep descriptions in ALL CAPS
+- Be specific, not vague
+- Do not include pricing
+- Do not include long paragraphs
+- Do not include more than one product unless the user asks
 
 - Do not include pricing
 - Do not include long paragraphs
@@ -1300,27 +1345,29 @@ Behavior:
 - If neither exact nor close fit is clear, ask one short follow-up question
 
 Product output rules:
-- Exact match format:
+- When returning an exact match, use this exact structure:
 
+EXACT MATCH
 PART #: [part number]
 DESCRIPTION: [tool description in ALL CAPS]
 
-[One or two short sentences max]
+[One short recommendation sentence]
 
-- Closest match format:
+- When returning a closest match, use this exact structure:
 
 CLOSEST MATCH
 PART #: [part number]
 DESCRIPTION: [tool description in ALL CAPS]
 
-[One or two short sentences max]
+[One short explanation sentence]
 
+- Keep the recommendation sentence specific, not vague
+- Mention why it fits in plain language
+- Do not use filler language like "this appears to be" unless the match is uncertain
+- Do not return long paragraphs
+- Do not return more than one product unless the user asks
 - Do not include pricing
 - Do not mention list price, cost, net price, surcharge, or availability unless the user explicitly asks
-- Do not return long generic tooling lectures when a likely product answer is available
-- Do not return more than one product unless the user asks
-- Do not rely on price-file data
-
 Focus:
 - Provide practical tooling recommendations
 - Keep answers clear, short, and useful
