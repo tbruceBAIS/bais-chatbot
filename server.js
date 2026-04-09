@@ -1148,7 +1148,7 @@ app.get("/widget", (_req, res) => {
     const messagesEl = document.getElementById("chat-messages");
     const inputEl = document.getElementById("chat-input");
     const sendBtn = document.getElementById("send-btn");
-    const history = [];
+    const chatHistory = [];
 
     const greetings = [
       "Hi there! 👋 I'm B.O.B. How can I help today?",
@@ -1203,8 +1203,8 @@ app.get("/widget", (_req, res) => {
 
       addMessage(text.replace(/</g, "&lt;").replace(/>/g, "&gt;"), "user");
 
-      history.push({ role: "user", content: text });
-      if (history.length > 10) history.shift();
+    chatHistory.push({ role: "user", content: text });
+if (chatHistory.length > 10) chatHistory.shift();
 
       inputEl.value = "";
       inputEl.disabled = true;
@@ -1212,15 +1212,15 @@ app.get("/widget", (_req, res) => {
       showTyping();
 
       try {
-        const res = await fetch("/chat", {
+        const res = await fetch("https://bais-chatbot.onrender.com/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            message: text,
-            history,
-          }),
+  message: text,
+  history: chatHistory,
+}),
         });
 
         const data = await res.json();
@@ -1239,8 +1239,8 @@ addMessage(
   "bot"
 );
 
-history.push({ role: "assistant", content: answer });
-        if (history.length > 10) history.shift();
+chatHistory.push({ role: "assistant", content: answer });
+if (chatHistory.length > 10) chatHistory.shift();
 
       } catch (err) {
         hideTyping();
