@@ -89,24 +89,26 @@ app.post("/chat", async function(req, res) {
     const history = sanitizeHistory(req.body.history);
     if (!message) return res.status(400).json({ answer: "Please send a message." });
 
+    console.log("CHAT REQUEST:", message);
+
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
       ...history,
       { role: "user", content: message },
     ];
 
-    const config = {
+    console.log("CALLING OPENAI, model:", OPENAI_MODEL);
+
+    const response = await openai.chat.completions.create({
       model: OPENAI_MODEL,
-      input: messages,
-      max_output_tokens: 512,
-    };
+      messages: messages,
+      max_tokens: 512,
+    });
 
-    if (VECTOR_STORE_ID) {
-      config.tools = [{ type: "file_search", vector_store_ids: [VECTOR_STORE_ID] }];
-    }
+    console.log("OPENAI RESPONSE RECEIVED");
 
-    const response = await openai.responses.create(config);
-    const answer = (response.output_text || "Sorry, I could not generate a response.").trim();
+    const answer = (response.choices[0].message.content || "Sorry, I could not generate a response.").trim();
+    console.log("ANSWER:", answer.slice(0, 100));
     return res.json({ answer: answer });
 
   } catch (err) {
@@ -117,4 +119,6 @@ app.post("/chat", async function(req, res) {
 
 app.listen(port, "0.0.0.0", function() {
   console.log("B.O.B. running on port " + port);
+  console.log("Model:", OPENAI_MODEL);
+  console.log("Vector store:", VECTOR_STORE_ID || "NOT SET");
 });
