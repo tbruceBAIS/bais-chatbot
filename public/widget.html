@@ -3,190 +3,293 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>B.O.B.</title>
+  <title>B.O.B. — Blue Ash Industrial Supply</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:         #0f1117;
-      --surface:    #1a1d27;
-      --surface2:   #22263a;
-      --border:     #2e3250;
-      --accent:     #4f8ef7;
-      --accent-dim: #1e3a6e;
-      --text:       #e8eaf6;
-      --muted:      #6b7280;
-      --radius:     14px;
-      --font:       'DM Sans', sans-serif;
-      --mono:       'DM Mono', monospace;
+      --blue-dark:   #0f2557;
+      --blue:        #1c3f8f;
+      --blue-mid:    #1e50b3;
+      --blue-light:  #2563d4;
+      --blue-pale:   #dce8ff;
+      --blue-faint:  #f0f5ff;
+      --white:       #ffffff;
+      --gray-light:  #f4f6fb;
+      --gray-border: #dde3f0;
+      --gray-text:   #5a6480;
+      --text:        #1a2035;
+      --font:        'Inter', sans-serif;
     }
 
-    html, body { width: 100%; height: 100%; background: var(--bg); font-family: var(--font); color: var(--text); overflow: hidden; }
+    html, body { width: 100%; height: 100%; font-family: var(--font); background: var(--gray-light); overflow: hidden; }
 
-    #shell { display: flex; flex-direction: column; width: 100%; height: 100%; }
+    #shell { display: flex; flex-direction: column; width: 100%; height: 100%; background: var(--white); }
 
-    #header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    #header {
+      background: var(--blue);
+      padding: 0 18px;
+      height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(15,37,87,0.2);
+    }
 
-    #avatar { width: 36px; height: 36px; border-radius: 10px; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+    #header-left { display: flex; align-items: center; gap: 10px; }
 
-    #header-text { display: flex; flex-direction: column; gap: 1px; }
-    #header-name { font-size: 14px; font-weight: 600; }
-    #header-sub  { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+    #logo { height: 26px; width: auto; filter: brightness(0) invert(1); }
 
-    #status-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; margin-left: auto; box-shadow: 0 0 6px #22c55e88; animation: pulse 2.5s ease-in-out infinite; }
+    #header-divider { width: 1px; height: 22px; background: rgba(255,255,255,0.22); }
 
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    #header-bot { display: flex; flex-direction: column; }
+    #header-name { font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 0.02em; line-height: 1.2; }
+    #header-sub  { font-size: 10px; color: rgba(255,255,255,0.6); font-weight: 400; }
 
-    #messages { flex: 1; overflow-y: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    #status { display: flex; align-items: center; gap: 5px; }
+    #status-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 6px #4ade8088; animation: pulse 2.5s ease-in-out infinite; }
+    #status-label { font-size: 10.5px; color: rgba(255,255,255,0.65); font-weight: 500; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: var(--gray-light);
+      scrollbar-width: thin;
+      scrollbar-color: var(--gray-border) transparent;
+    }
     #messages::-webkit-scrollbar { width: 4px; }
-    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: var(--gray-border); border-radius: 4px; }
 
-    .row { display: flex; align-items: flex-end; gap: 8px; animation: fadeUp 0.2s ease; }
+    .row { display: flex; align-items: flex-end; gap: 7px; animation: fadeUp 0.18s ease; }
     .row.user { justify-content: flex-end; }
     .row.bot  { justify-content: flex-start; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-    @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .bot-avatar {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: var(--blue);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-bottom: 2px;
+      box-shadow: 0 1px 4px rgba(28,63,143,0.2);
+      overflow: hidden;
+      padding: 4px;
+    }
 
-    .bot-icon { width: 26px; height: 26px; border-radius: 8px; background: var(--accent-dim); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; margin-bottom: 2px; }
+    .bot-avatar img { width: 100%; height: 100%; object-fit: contain; filter: brightness(0) invert(1); }
 
-    .bubble { max-width: 78%; padding: 11px 14px; border-radius: var(--radius); font-size: 13.5px; line-height: 1.55; word-break: break-word; }
-    .row.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
-    .row.bot  .bubble { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+    .bubble {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      line-height: 1.55;
+      word-break: break-word;
+    }
 
-    .typing-dots { display: flex; gap: 5px; align-items: center; padding: 4px 2px; }
-    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: bop 1.3s ease-in-out infinite; }
-    .dot:nth-child(2) { animation-delay: 0.18s; }
-    .dot:nth-child(3) { animation-delay: 0.36s; }
-    @keyframes bop { 0%, 80%, 100% { transform: translateY(0); opacity: 0.4; } 40% { transform: translateY(-5px); opacity: 1; } }
+    .row.user .bubble {
+      background: var(--blue);
+      color: #fff;
+      border-bottom-right-radius: 3px;
+      box-shadow: 0 1px 4px rgba(28,63,143,0.2);
+    }
 
-    #input-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
-
-    #input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-family: var(--font); font-size: 13.5px; color: var(--text); outline: none; transition: border-color 0.15s; min-height: 42px; }
-    #input::placeholder { color: var(--muted); }
-    #input:focus { border-color: var(--accent); }
-
-    #send { width: 42px; height: 42px; border-radius: 10px; background: var(--accent); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s, transform 0.1s; }
-    #send:hover:not(:disabled) { background: #6ba3ff; }
-    #send:active:not(:disabled) { transform: scale(0.94); }
-    #send:disabled { opacity: 0.4; cursor: default; }
-    #send svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .row.bot .bubble {
+      background: var(--white);
+      color: var(--text);
+      border: 1px solid var(--gray-border);
+      border-bottom-left-radius: 3px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
 
     .link-pill {
-      display: inline-block;
-      margin: 4px 2px;
-      padding: 5px 12px;
-      background: var(--accent-dim);
-      color: var(--accent);
-      border: 1px solid var(--accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin: 5px 2px 2px;
+      padding: 5px 11px;
+      background: var(--blue-faint);
+      color: var(--blue-mid);
+      border: 1px solid var(--blue-pale);
       border-radius: 20px;
-      font-size: 12.5px;
-      font-weight: 500;
+      font-size: 12px;
+      font-weight: 600;
       text-decoration: none;
-      transition: background 0.15s, color 0.15s;
-      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
     }
 
-    .link-pill:hover {
-      background: var(--accent);
-      color: #fff;
+    .link-pill:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+    .typing-dots { display: flex; gap: 5px; align-items: center; padding: 3px 0; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gray-text); animation: bop 1.3s ease-in-out infinite; }
+    .dot:nth-child(2) { animation-delay: 0.18s; }
+    .dot:nth-child(3) { animation-delay: 0.36s; }
+    @keyframes bop { 0%, 80%, 100% { transform: translateY(0); opacity: 0.35; } 40% { transform: translateY(-5px); opacity: 1; } }
+
+    #input-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--gray-border);
+      background: var(--white);
+      flex-shrink: 0;
     }
+
+    #input {
+      flex: 1;
+      background: var(--gray-light);
+      border: 1.5px solid var(--gray-border);
+      border-radius: 10px;
+      padding: 9px 14px;
+      font-family: var(--font);
+      font-size: 13.5px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s, background 0.15s;
+      min-height: 40px;
+    }
+    #input::placeholder { color: #a0aabf; }
+    #input:focus { border-color: var(--blue-mid); background: var(--white); }
+
+    #send {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: var(--blue);
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, transform 0.1s;
+      box-shadow: 0 1px 4px rgba(28,63,143,0.3);
+    }
+    #send:hover:not(:disabled) { background: var(--blue-light); }
+    #send:active:not(:disabled) { transform: scale(0.93); }
+    #send:disabled { opacity: 0.4; cursor: default; }
+    #send svg { width: 17px; height: 17px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    #footer { text-align: center; padding: 5px 0 7px; font-size: 10px; color: #b0b8cc; background: var(--white); }
   </style>
 </head>
 <body>
 <div id="shell">
+
   <div id="header">
-    <div id="avatar">🤖</div>
-    <div id="header-text">
-      <span id="header-name">B.O.B.</span>
-      <span id="header-sub">Blue's Operation Bot · BAIS</span>
+    <div id="header-left">
+      <img id="logo" src="/logo.png" alt="Blue Ash Industrial Supply" />
+      <div id="header-divider"></div>
+      <div id="header-bot">
+        <span id="header-name">B.O.B.</span>
+        <span id="header-sub">Blue's Operation Bot</span>
+      </div>
     </div>
-    <div id="status-dot"></div>
+    <div id="status">
+      <div id="status-dot"></div>
+      <span id="status-label">Online</span>
+    </div>
   </div>
+
   <div id="messages"></div>
+
   <div id="input-bar">
-    <input id="input" type="text" placeholder="Ask about tools, products, or Blue Ash..." autocomplete="off" />
+    <input id="input" type="text" placeholder="Ask about products, tooling, or Blue Ash..." autocomplete="off" />
     <button id="send" aria-label="Send">
       <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
   </div>
-</div>
 
+  <div id="footer">Powered by Blue Ash Industrial Supply</div>
+
+</div>
 <script>
-  var API     = "https://bais-chatbot.onrender.com/chat";
+  var API         = "https://bais-chatbot.onrender.com/chat";
   var chatHistory = [];
-  var msgs    = document.getElementById("messages");
-  var input   = document.getElementById("input");
-  var sendBtn = document.getElementById("send");
+  var msgs        = document.getElementById("messages");
+  var input       = document.getElementById("input");
+  var sendBtn     = document.getElementById("send");
 
   var greetings = [
-    "Hey! I'm B.O.B. — Blue Ash Industrial Supply's assistant. What can I help you find? 👋",
-    "Hi there! I'm B.O.B. Ask me about products, tooling, or anything about Blue Ash. 👋",
-    "Hello! I'm B.O.B. Ready to help with tools, MRO, or questions about Blue Ash Industrial. 🤖"
+    "Hey there! I'm B.O.B., your Blue Ash Industrial Supply assistant. What can I help you find today? 👋",
+    "Hi! I'm B.O.B. — here to help with products, tooling, or anything about Blue Ash Industrial. 👋",
+    "Hello! I'm B.O.B., Blue Ash Industrial's assistant. Ask me about tools, MRO, or our services! 🔧"
   ];
 
-  function scrollBottom() {
-    msgs.scrollTop = msgs.scrollHeight;
+  var URL_LABELS = {
+    "group/6211":      "HSS / Co Drills",
+    "group/6210":      "Solid Carbide Drills",
+    "group/6201":      "Drilling",
+    "group/6000":      "Milling",
+    "group/6300":      "Threading / Taps",
+    "group/6202":      "Reaming",
+    "group/6303":      "Thread Mills",
+    "group/6001":      "Solid Milling",
+    "catalogue/product": "View Product",
+    "vending-solutions": "Vending Solutions",
+    "aboutus":         "About Us",
+    "shopbybrand":     "Shop by Brand",
+    "contact":         "Contact Us",
+    "meet-the-team":   "Meet the Team"
+  };
+
+  function getLinkLabel(url) {
+    var keys = Object.keys(URL_LABELS);
+    for (var i = 0; i < keys.length; i++) {
+      if (url.indexOf(keys[i]) !== -1) return URL_LABELS[keys[i]];
+    }
+    return "Visit Page";
   }
+
+  function scrollBottom() { msgs.scrollTop = msgs.scrollHeight; }
 
   function addMessage(text, who) {
     var row = document.createElement("div");
     row.className = "row " + who;
 
     if (who === "bot") {
-      var icon = document.createElement("div");
-      icon.className = "bot-icon";
-      icon.textContent = "🤖";
-      row.appendChild(icon);
+      var av = document.createElement("div");
+      av.className = "bot-avatar";
+      var im = document.createElement("img");
+      im.src = "/logo.png";
+      im.alt = "BOB";
+      av.appendChild(im);
+      row.appendChild(av);
     }
 
     var bubble = document.createElement("div");
     bubble.className = "bubble";
 
-    // Split text into lines, detect URLs and render as clickable pill buttons
     var lines = text.split("\n");
     for (var i = 0; i < lines.length; i++) {
       if (i > 0) bubble.appendChild(document.createElement("br"));
       var line = lines[i];
-
-      // Check if this line contains a URL (starts with http)
       var urlStart = line.indexOf("http");
+
       if (urlStart !== -1) {
-        // Text before the URL
-        if (urlStart > 0) {
-          bubble.appendChild(document.createTextNode(line.slice(0, urlStart)));
-        }
-        // Extract the URL (ends at whitespace or end of line)
+        if (urlStart > 0) bubble.appendChild(document.createTextNode(line.slice(0, urlStart)));
         var urlEnd = line.indexOf(" ", urlStart);
-        var url = urlEnd === -1 ? line.slice(urlStart) : line.slice(urlStart, urlEnd);
-        var afterUrl = urlEnd === -1 ? "" : line.slice(urlEnd);
+        var url  = urlEnd === -1 ? line.slice(urlStart) : line.slice(urlStart, urlEnd);
+        var rest = urlEnd === -1 ? "" : line.slice(urlEnd);
 
-        // Build a friendly label from the URL
-        var label = "View Products";
-        if (url.indexOf("group/6211") !== -1) label = "HSS/Co Drills";
-        else if (url.indexOf("group/6210") !== -1) label = "Solid Carbide Drills";
-        else if (url.indexOf("group/6201") !== -1) label = "Drilling";
-        else if (url.indexOf("group/6000") !== -1) label = "Milling";
-        else if (url.indexOf("group/6300") !== -1) label = "Threading / Taps";
-        else if (url.indexOf("group/6202") !== -1) label = "Reaming";
-        else if (url.indexOf("group/6303") !== -1) label = "Thread Mills";
-        else if (url.indexOf("group/6001") !== -1) label = "Solid Milling";
-        else if (url.indexOf("catalogue/product") !== -1) label = "View Product";
-        else if (url.indexOf("bessig.com") !== -1) label = "Visit Website";
-
-        // Render as a pill button
         var pill = document.createElement("a");
         pill.href = url;
         pill.target = "_blank";
         pill.rel = "noopener noreferrer";
         pill.className = "link-pill";
-        pill.textContent = "🔗 " + label;
+        pill.appendChild(document.createTextNode("↗ " + getLinkLabel(url)));
         bubble.appendChild(pill);
 
-        // Text after URL
-        if (afterUrl) bubble.appendChild(document.createTextNode(afterUrl));
+        if (rest) bubble.appendChild(document.createTextNode(rest));
       } else {
         bubble.appendChild(document.createTextNode(line));
       }
@@ -203,14 +306,16 @@
     row.className = "row bot";
     row.id = "typing";
 
-    var icon = document.createElement("div");
-    icon.className = "bot-icon";
-    icon.textContent = "🤖";
-    row.appendChild(icon);
+    var av = document.createElement("div");
+    av.className = "bot-avatar";
+    var im = document.createElement("img");
+    im.src = "/logo.png";
+    im.alt = "BOB";
+    av.appendChild(im);
+    row.appendChild(av);
 
     var bubble = document.createElement("div");
     bubble.className = "bubble";
-
     var dots = document.createElement("div");
     dots.className = "typing-dots";
     for (var i = 0; i < 3; i++) {
@@ -229,10 +334,7 @@
     if (t) t.remove();
   }
 
-  function lock(val) {
-    input.disabled = val;
-    sendBtn.disabled = val;
-  }
+  function lock(val) { input.disabled = val; sendBtn.disabled = val; }
 
   async function send() {
     var text = input.value.trim();
@@ -248,10 +350,7 @@
       var t = document.getElementById("typing");
       if (t) {
         var b = t.querySelector(".bubble");
-        if (b) {
-          b.textContent = "";
-          b.appendChild(document.createTextNode("Waking up, one moment..."));
-        }
+        if (b) { b.textContent = ""; b.appendChild(document.createTextNode("One moment...")); }
       }
     }, 9000);
 
@@ -272,7 +371,6 @@
 
       var data = await res.json();
       var answer = data.answer ? data.answer.trim() : "Sorry, I ran into an issue.";
-
       addMessage(answer, "bot");
       chatHistory.push({ role: "assistant", content: answer });
       if (chatHistory.length > 20) chatHistory = chatHistory.slice(chatHistory.length - 20);
@@ -281,7 +379,7 @@
       clearTimeout(nudge);
       hideTyping();
       var msg = (err.name === "AbortError")
-        ? "That took too long. Render may be waking up — try again in a moment."
+        ? "That took too long — please try again in a moment."
         : "Connection error. Please try again.";
       addMessage(msg, "bot");
       if (chatHistory.length && chatHistory[chatHistory.length - 1].role === "user") chatHistory.pop();
