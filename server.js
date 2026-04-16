@@ -142,7 +142,7 @@ app.get("/widget", (_req, res) => {
 /* ─────────────────────────────────────────
    START
 ───────────────────────────────────────── */
-app.listen(port, () => {
+app.listen(port, "0.0.0.0", () => {
   console.log("B.O.B. running on port", port);
   console.log("Model:", OPENAI_MODEL);
   console.log("Vector store:", VECTOR_STORE_ID || "NOT SET");
