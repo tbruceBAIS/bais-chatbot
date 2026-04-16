@@ -73,6 +73,26 @@
     #send:active:not(:disabled) { transform: scale(0.94); }
     #send:disabled { opacity: 0.4; cursor: default; }
     #send svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    .link-pill {
+      display: inline-block;
+      margin: 4px 2px;
+      padding: 5px 12px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 20px;
+      font-size: 12.5px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s;
+      cursor: pointer;
+    }
+
+    .link-pill:hover {
+      background: var(--accent);
+      color: #fff;
+    }
   </style>
 </head>
 <body>
@@ -125,11 +145,51 @@
     var bubble = document.createElement("div");
     bubble.className = "bubble";
 
-    // Build message using DOM text nodes — NO regex, NO innerHTML string manipulation
+    // Split text into lines, detect URLs and render as clickable pill buttons
     var lines = text.split("\n");
     for (var i = 0; i < lines.length; i++) {
       if (i > 0) bubble.appendChild(document.createElement("br"));
-      bubble.appendChild(document.createTextNode(lines[i]));
+      var line = lines[i];
+
+      // Check if this line contains a URL (starts with http)
+      var urlStart = line.indexOf("http");
+      if (urlStart !== -1) {
+        // Text before the URL
+        if (urlStart > 0) {
+          bubble.appendChild(document.createTextNode(line.slice(0, urlStart)));
+        }
+        // Extract the URL (ends at whitespace or end of line)
+        var urlEnd = line.indexOf(" ", urlStart);
+        var url = urlEnd === -1 ? line.slice(urlStart) : line.slice(urlStart, urlEnd);
+        var afterUrl = urlEnd === -1 ? "" : line.slice(urlEnd);
+
+        // Build a friendly label from the URL
+        var label = "View Products";
+        if (url.indexOf("group/6211") !== -1) label = "HSS/Co Drills";
+        else if (url.indexOf("group/6210") !== -1) label = "Solid Carbide Drills";
+        else if (url.indexOf("group/6201") !== -1) label = "Drilling";
+        else if (url.indexOf("group/6000") !== -1) label = "Milling";
+        else if (url.indexOf("group/6300") !== -1) label = "Threading / Taps";
+        else if (url.indexOf("group/6202") !== -1) label = "Reaming";
+        else if (url.indexOf("group/6303") !== -1) label = "Thread Mills";
+        else if (url.indexOf("group/6001") !== -1) label = "Solid Milling";
+        else if (url.indexOf("catalogue/product") !== -1) label = "View Product";
+        else if (url.indexOf("bessig.com") !== -1) label = "Visit Website";
+
+        // Render as a pill button
+        var pill = document.createElement("a");
+        pill.href = url;
+        pill.target = "_blank";
+        pill.rel = "noopener noreferrer";
+        pill.className = "link-pill";
+        pill.textContent = "🔗 " + label;
+        bubble.appendChild(pill);
+
+        // Text after URL
+        if (afterUrl) bubble.appendChild(document.createTextNode(afterUrl));
+      } else {
+        bubble.appendChild(document.createTextNode(line));
+      }
     }
 
     row.appendChild(bubble);
