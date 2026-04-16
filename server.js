@@ -1148,7 +1148,11 @@ app.get("/widget", (_req, res) => {
     const messagesEl = document.getElementById("chat-messages");
     const inputEl = document.getElementById("chat-input");
     const sendBtn = document.getElementById("send-btn");
+
+    // Chat history stored as separate user/assistant arrays to avoid double-push bug
     const chatHistory = [];
+    const BOB_API = "https://bais-chatbot.onrender.com/chat";
+    const FETCH_TIMEOUT_MS = 60000; // 60s to allow for Render cold-start wake-up
 
     const greetings = [
       "Hi there! 👋 I'm B.O.B. How can I help today?",
@@ -1156,7 +1160,8 @@ app.get("/widget", (_req, res) => {
       "Hey there! 👋 Need help with tooling or MRO?",
       "Welcome! 👋 Ask me about products, tooling, or Blue Ash."
     ];
-	    function addMessage(html, who = "bot") {
+
+    function addMessage(html, who = "bot") {
       const row = document.createElement("div");
       row.className = "message-row " + who;
 
@@ -1170,6 +1175,7 @@ app.get("/widget", (_req, res) => {
     }
 
     function showTyping() {
+      if (document.getElementById("typing-row")) return;
       const row = document.createElement("div");
       row.className = "message-row bot";
       row.id = "typing-row";
@@ -1197,64 +1203,101 @@ app.get("/widget", (_req, res) => {
       if (typingRow) typingRow.remove();
     }
 
+    function setInputLocked(locked) {
+      inputEl.disabled = locked;
+      sendBtn.disabled = locked;
+      if (!locked) inputEl.focus();
+    }
+
+    function formatAnswer(answer) {
+      // The answer may contain raw <a href="..."> links from the server (formatRelatedOptionsHtml).
+      // Split on those so we only HTML-escape the text portions, not the links.
+      const parts = answer.split(/(<a\s[^>]*>.*?<\/a>|<br>|<b>[^<]*<\/b>)/gi);
+      const escaped = parts.map((part) => {
+        if (/^<a\s/i.test(part) || /^<br>$/i.test(part) || /^<b>/i.test(part)) return part;
+        return part.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }).join("");
+
+      return escaped
+        .replace(/\n/g, "<br>")
+        .replace(/EXACT MATCH/g, "<strong>EXACT MATCH</strong>")
+        .replace(/CLOSEST MATCH/g, "<strong>CLOSEST MATCH</strong>")
+        .replace(/Part #:/gi, "<strong>Part #:</strong>")
+        .replace(/Description:/gi, "<strong>Description:</strong>")
+        .replace(/Fit:/gi, "<strong>Fit:</strong>")
+        .replace(/Related:/gi, "<strong>Related:</strong>");
+    }
+
     async function sendMessage() {
       const text = inputEl.value.trim();
       if (!text) return;
 
       addMessage(text.replace(/</g, "&lt;").replace(/>/g, "&gt;"), "user");
-
-    chatHistory.push({ role: "user", content: text });
-if (chatHistory.length > 10) chatHistory.shift();
-
       inputEl.value = "";
-      inputEl.disabled = true;
-      sendBtn.disabled = true;
+      setInputLocked(true);
       showTyping();
 
+      // Add user message to history BEFORE the fetch
+      chatHistory.push({ role: "user", content: text });
+      if (chatHistory.length > 20) chatHistory.splice(0, 2); // trim oldest pair
+
+      // Warn user if it seems to be taking a while (Render cold-start)
+      const slowWarningTimer = setTimeout(() => {
+        const typingRow = document.getElementById("typing-row");
+        if (typingRow) {
+          const bubble = typingRow.querySelector(".bubble");
+          if (bubble) bubble.innerHTML = '<span style="font-size:12px;color:#888;">⏳ Waking up... just a moment...</span>';
+        }
+      }, 8000);
+
       try {
-        const res = await fetch("https://bais-chatbot.onrender.com/chat", {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+        const res = await fetch(BOB_API, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-  message: text,
-  history: chatHistory,
-}),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, history: chatHistory }),
+          signal: controller.signal,
         });
 
+        clearTimeout(timeoutId);
+        clearTimeout(slowWarningTimer);
+        hideTyping();
+
+        if (!res.ok) {
+          throw new Error("Server returned " + res.status);
+        }
+
         const data = await res.json();
-hideTyping();
+        const answer = data.answer || "Sorry, I ran into an issue.";
 
-const answer = data.answer || "Sorry, I ran into an issue.";
-addMessage(
-  answer
-    .replace(/\n/g, "<br>")
-    .replace(/EXACT MATCH/g, "<strong>EXACT MATCH</strong>")
-    .replace(/CLOSEST MATCH/g, "<strong>CLOSEST MATCH</strong>")
-    .replace(/Part #:/g, "<strong>Part #:</strong>")
-    .replace(/Description:/g, "<strong>Description:</strong>")
-    .replace(/Fit:/g, "<strong>Fit:</strong>")
-    .replace(/Related:/g, "<strong>Related:</strong>"),
-  "bot"
-);
+        addMessage(formatAnswer(answer), "bot");
 
-chatHistory.push({ role: "assistant", content: answer });
-if (chatHistory.length > 10) chatHistory.shift();
+        // Add assistant reply to history AFTER the fetch
+        chatHistory.push({ role: "assistant", content: answer });
+        if (chatHistory.length > 20) chatHistory.splice(0, 2);
 
       } catch (err) {
+        clearTimeout(slowWarningTimer);
         hideTyping();
-        addMessage("Sorry — I had trouble connecting just now.", "bot");
+        if (err.name === "AbortError") {
+          addMessage("⏱️ That took too long — please try again in a moment.", "bot");
+        } else {
+          addMessage("Sorry — I had trouble connecting just now. Please try again.", "bot");
+        }
+        // Remove the user message we optimistically added if the request failed
+        if (chatHistory.length && chatHistory[chatHistory.length - 1].role === "user") {
+          chatHistory.pop();
+        }
       }
 
-      inputEl.disabled = false;
-      sendBtn.disabled = false;
-      inputEl.focus();
+      setInputLocked(false);
     }
 
     sendBtn.addEventListener("click", sendMessage);
     inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") sendMessage();
+      if (e.key === "Enter" && !e.shiftKey) sendMessage();
     });
 
     addMessage(greetings[Math.floor(Math.random() * greetings.length)], "bot");
