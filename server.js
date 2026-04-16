@@ -445,17 +445,12 @@ const WIDGET_HTML = `<!DOCTYPE html>
     var bubble = document.createElement("div");
     bubble.className = "bubble";
 
-    // Safe text rendering — convert newlines to <br>, linkify URLs
+    // Safe text rendering — convert newlines to <br>
     var safe = text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/\n/g, "<br>");
-
-    // Linkify bare URLs
-    safe = safe.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
-      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
-    });
 
     bubble.innerHTML = safe;
     row.appendChild(bubble);
