@@ -1,1544 +1,575 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import axios from "axios";
-import * as cheerio from "cheerio";
 import OpenAI from "openai";
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const BASE_URL =
-  process.env.WEBSITE_BASE_URL || "https://blue-prod-01.bessig.com";
-const VECTOR_STORE_ID =
-  process.env.OPENAI_VECTOR_STORE_ID || "vs_69c695df0a1881919287c9ed05b5cf6c";
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-
-let kbChunks = [];
+const VECTOR_STORE_ID = process.env.OPENAI_VECTOR_STORE_ID || "vs_69c695df0a1881919287c9ed05b5cf6c";
+const OPENAI_MODEL    = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const BASE_URL        = process.env.WEBSITE_BASE_URL || "https://blue-prod-01.bessig.com";
 
 app.use(cors());
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "1mb" }));
 
-/* =========================
-   WEBSITE KNOWLEDGE
-========================= */
-async function buildKnowledgeBase() {
-  const urls = [
-    BASE_URL,
-    `${BASE_URL}/content/page/aboutus`,
-    `${BASE_URL}/contact.php`,
-    `${BASE_URL}/content/page/vending-solutions`,
-  ];
+/* ─────────────────────────────────────────
+   SYSTEM PROMPT
+───────────────────────────────────────── */
+const SYSTEM_PROMPT = `
+You are B.O.B. (Blue's Operation Bot), the AI assistant for Blue Ash Industrial Supply.
+Blue Ash Industrial Supply is an industrial distributor based in Blue Ash, Ohio.
+They carry a wide range of MRO products including cutting tools, abrasives, fasteners,
+safety equipment, hand tools, power tools, measuring/inspection, workholding, and more.
+They are an authorized Guhring distributor.
 
-  const chunks = [];
+YOUR PERSONALITY:
+- Friendly, knowledgeable, and direct — like a helpful counter rep who knows their stuff
+- Use light emojis where natural (greetings, good news, etc.) but don't overdo it
+- Keep answers concise and practical — no walls of text
+- If you don't know something, say so honestly and suggest contacting the team
 
-  for (const url of urls) {
-    try {
-      const res = await axios.get(url, { timeout: 12000 });
-      const $ = cheerio.load(res.data);
+YOUR PRIORITIES (in order):
+1. Answer questions about Blue Ash Industrial Supply (hours, location, services, capabilities, vendors)
+2. Share general tooling and MRO knowledge (materials, applications, best practices)
+3. Help users find the right product or product category
+4. Direct users to relevant product pages on the website when helpful
 
-      $("script, style, noscript").remove();
-      const text = $("body").text().replace(/\s+/g, " ").trim();
+GUHRING TOOLS:
+You have deep knowledge of Guhring cutting tools. When a user asks about a Guhring tool:
+- Ask clarifying questions to narrow down: tool type, diameter/size, material being cut,
+  application (through hole, blind hole, etc.), and any coating or substrate preferences
+- Once you have enough info, recommend a specific Guhring series or part if you can
+- Always mention you can help them find it on the website or they can call the team
 
-      const pieces = text.match(/.{1,1200}/g) || [];
-      for (const p of pieces) {
-        chunks.push({ url, text: p });
-      }
+PRODUCT PAGE LINKS:
+When directing to product categories, use these URLs:
+- Drilling: ${BASE_URL}/browse/catalogue/group/6201
+- HSS/Co Drills: ${BASE_URL}/browse/catalogue/group/6211
+- Solid Carbide Drills: ${BASE_URL}/browse/catalogue/group/6210
+- Milling: ${BASE_URL}/browse/catalogue/group/6000
+- Threading/Taps: ${BASE_URL}/browse/catalogue/group/6300
+- Reaming: ${BASE_URL}/browse/catalogue/group/6202
+- Thread Mills: ${BASE_URL}/browse/catalogue/group/6303
 
-      console.log("Indexed:", url);
-    } catch (err) {
-      console.log("Failed to index:", url, err.message);
-    }
-  }
+FORMATTING:
+- Use plain line breaks between sections, not markdown headers
+- When showing a product match, use this structure:
 
-  kbChunks = chunks;
+Part #: [number]
+Description: [description]
+Why it fits: [one sentence]
+
+- Never use ** bold markdown — the chat renders plain text
+- Keep responses under ~150 words unless detail is truly needed
+`.trim();
+
+/* ─────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────── */
+function sanitizeHistory(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(m => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
+    .slice(-12)
+    .map(m => ({ role: m.role, content: m.content.trim() }));
 }
 
-function getContext(query) {
-  const q = String(query || "").toLowerCase();
-
-  return kbChunks
-    .map((c) => {
-      const lower = c.text.toLowerCase();
-      let score = 0;
-
-      if (q && lower.includes(q)) score += 10;
-
-      const tokens = q.split(/\s+/).filter(Boolean);
-      for (const token of tokens) {
-        if (token.length > 2 && lower.includes(token)) {
-          score += 2;
-        }
-      }
-
-      return { ...c, score };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .map((c) => c.text)
-    .join("\n\n");
-}
-
-/* =========================
-   CLEANERS
-========================= */
-function cleanPlainText(text) {
-  return String(text || "")
-    .replace(/\*\*/g, "")
-    .replace(/#{1,6}\s*/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function escapeHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/* =========================
-   HISTORY + VENDOR HELPERS
-========================= */
-function sanitizeHistory(history) {
-  if (!Array.isArray(history)) return [];
-
-  return history
-    .filter(
-      (item) =>
-        item &&
-        (item.role === "user" || item.role === "assistant") &&
-        typeof item.content === "string" &&
-        item.content.trim()
-    )
-    .slice(-10)
-    .map((item) => ({
-      role: item.role,
-      content: item.content.trim(),
-    }));
-}
-
-function detectVendor(message, history = []) {
-  const combined = [
-    String(message || ""),
-    ...history.map((h) => String(h.content || "")),
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  if (combined.includes("guhring")) return "guhring";
-  if (combined.includes("sandvik")) return "sandvik";
-  if (combined.includes("iscar")) return "iscar";
-  if (combined.includes("kyocera")) return "kyocera";
-  if (combined.includes("sgs")) return "sgs";
-
-  return null;
-}
-
-function getGuhringFollowUp(type) {
-  switch (type) {
-    case "drill":
-      return [
-        "Diameter and length",
-        "Material to drill",
-        "Drill style or series preference",
-        "Application details",
-      ];
-    case "end_mill":
-      return [
-        "Diameter",
-        "Material being cut",
-        "Operation",
-        "End style needed",
-      ];
-    case "tap":
-      return [
-        "Thread size",
-        "Material being cut",
-        "Cut tap or form tap",
-        "Through hole or blind hole",
-      ];
-    case "reamer":
-      return [
-        "Reamer diameter",
-        "Material being cut",
-        "Tolerance requirement",
-        "Solid or indexable preference",
-      ];
-    case "thread_mill":
-      return [
-        "Thread size",
-        "Material being cut",
-        "Internal or external thread",
-        "Pitch requirement",
-      ];
-    default:
-      return [
-        "Tool size",
-        "Material",
-        "Application details",
-      ];
-  }
-}
-
-function normalizeText(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9/.\-\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function detectOpenPreferences(message, history = []) {
-  const combined = normalizeText([
-    String(message || ""),
-    ...history.map((h) => String(h.content || ""))
-  ].join(" "));
-
-  return {
-    coatingOpen:
-      combined.includes("no coating preference") ||
-      combined.includes("no coating") ||
-      combined.includes("any coating") ||
-      combined.includes("coating does not matter"),
-    seriesOpen:
-      combined.includes("any series") ||
-      combined.includes("series does not matter"),
-    substrateOpen:
-      combined.includes("any substrate") ||
-      combined.includes("substrate does not matter"),
-    lengthOpen:
-      combined.includes("any length") ||
-      combined.includes("length does not matter"),
-    materialOpen:
-      combined.includes("any material") ||
-      combined.includes("material does not matter")
-  };
-}
-
-function detectRequiredFilters(message, history = []) {
-  const combined = normalizeText([
-    String(message || ""),
-    ...history.map((h) => String(h.content || ""))
-  ].join(" "));
-
-  const openPrefs = detectOpenPreferences(message, history);
-
-  const required = {
-    size: [],
-    material: [],
-    coating: [],
-    style: [],
-    substrate: [],
-    length: [],
-    holeType: [],
-    threadType: []
-  };
-
-  const fractions = combined.match(/\d+\/\d+/g) || [];
-  const decimals = combined.match(/\d+\.\d+/g) || [];
-  const metric = combined.match(/\b\d+\s?mm\b/g) || [];
-
-  required.size.push(...fractions, ...decimals, ...metric);
-
-  if (!openPrefs.materialOpen) {
-    const materials = [
-      "stainless",
-      "steel",
-      "aluminum",
-      "cast iron",
-      "titanium",
-      "inconel",
-      "hardened"
-    ];
-    for (const m of materials) {
-      if (combined.includes(m)) required.material.push(m);
-    }
-  }
-
-  if (!openPrefs.coatingOpen) {
-    const coatings = [
-      "tin",
-      "tialn",
-      "ticn",
-      "firex",
-      "nano",
-      "bright finish",
-      "molyglide"
-    ];
-    for (const c of coatings) {
-      if (combined.includes(c)) required.coating.push(c);
-    }
-  }
-
-  if (!openPrefs.substrateOpen) {
-    const substrates = [
-      "cobalt",
-      "hsco",
-      "hss-e",
-      "hsse",
-      "m35",
-      "m42",
-      "solid carbide",
-      "carbide",
-      "pm cobalt"
-    ];
-    for (const s of substrates) {
-      if (combined.includes(s)) required.substrate.push(s);
-    }
-  }
-
-  if (!openPrefs.lengthOpen) {
-    const lengths = [
-      "jobber",
-      "jobber length",
-      "standard length",
-      "stub",
-      "screw machine",
-      "short length",
-      "deep hole"
-    ];
-    for (const l of lengths) {
-      if (combined.includes(l)) required.length.push(l);
-    }
-  }
-
-  const styles = [
-    "parabolic",
-    "spot",
-    "spot drill",
-    "center drill",
-    "nc spotting",
-    "insert drill",
-    "form tap",
-    "cut tap",
-    "spiral flute",
-    "spiral point",
-    "ball nose",
-    "ballnose",
-    "square end",
-    "corner radius",
-    "roughing",
-    "rougher"
-  ];
-  for (const s of styles) {
-    if (combined.includes(s)) required.style.push(s);
-  }
-
-  if (combined.includes("blind hole") || combined.includes("blind")) {
-    required.holeType.push("blind");
-  }
-  if (combined.includes("through hole") || combined.includes("through")) {
-    required.holeType.push("through");
-  }
-
-  if (combined.includes("metric")) required.threadType.push("metric");
-  if (combined.includes("unc")) required.threadType.push("unc");
-  if (combined.includes("unf")) required.threadType.push("unf");
-
-  return { required, openPrefs };
-}
-
-const GUHRING_RULES = {
-  drill: {
-    aliases: [
-      "drill", "drills", "drilling", "jobber", "jobber drill", "jobber drills",
-      "screw machine", "stub drill", "stub drills", "spot drill", "spot drills",
-      "center drill", "center drills", "nc spotting", "deep hole", "insert drill"
-    ],
-    exactFilters: {
-      jobber: ["jobber", "standard length", "jobber length"],
-      cobalt: ["cobalt", "hsco", "hssco", "m35", "hss-e", "hsse"],
-      carbide: ["solid carbide", "carbide", "ratio drill"],
-      stub: ["stub", "screw machine", "short length"],
-      parabolic: ["parabolic"],
-      spot: ["spot", "spot drill", "spotting", "center drill", "nc spotting"],
-      deepHole: ["deep hole", "gun drill"],
-      insert: ["insert drill", "insert drilling", "replaceable tip"]
-    },
-    relatedGroups: [
-      { title: "Drilling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6201" },
-      { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" },
-      { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" },
-      { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" },
-      { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
-    ]
-  },
-
-  end_mill: {
-    aliases: [
-      "end mill", "end mills", "endmill", "endmills", "milling",
-      "ball nose", "ballnose", "square end", "corner radius", "rougher", "roughing"
-    ],
-    exactFilters: {
-      ball: ["ball nose", "ballnose", "ball"],
-      square: ["square end", "square"],
-      cornerRadius: ["corner radius"],
-      roughing: ["roughing", "rougher"],
-      finishing: ["finishing", "finish"]
-    },
-    relatedGroups: [
-      { title: "Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6000" },
-      { title: "Solid Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6001" },
-      { title: "Indexable Milling", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6002" }
-    ]
-  },
-
-  tap: {
-    aliases: [
-      "tap", "taps", "tapping", "form tap", "cut tap", "spiral flute", "spiral point"
-    ],
-    exactFilters: {
-      form: ["form tap", "forming tap", "roll tap"],
-      cut: ["cut tap", "cutting tap"],
-      spiralFlute: ["spiral flute"],
-      spiralPoint: ["spiral point", "gun tap"],
-      blind: ["blind hole", "blind"],
-      through: ["through hole", "through"]
-    },
-    relatedGroups: [
-      { title: "Threading", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6300" },
-      { title: "Taps", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6104" },
-      { title: "Thread Mills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6303" }
-    ]
-  },
-
-  thread_mill: {
-    aliases: [
-      "thread mill", "thread mills", "threadmill", "threadmilling",
-      "drill thread mill", "micro thread mill"
-    ],
-    exactFilters: {
-      drillThread: ["drill thread mill", "drill/thread mill"],
-      micro: ["micro thread mill", "micro"],
-      hardened: ["hardened", "hard steel"]
-    },
-    relatedGroups: [
-      { title: "Thread Mills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6303" },
-      { title: "Threading", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6300" },
-      { title: "Dies", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6302" }
-    ]
-  },
-
-  reamer: {
-    aliases: ["reamer", "reamers", "reaming"],
-    exactFilters: {
-      solid: ["solid reamer", "solid"],
-      indexable: ["indexable reamer", "indexable"]
-    },
-    relatedGroups: [
-      { title: "Reaming", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6202" },
-      { title: "Solid/Brazed Reamers", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6220" },
-      { title: "Indexable Reamer Bodies", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/98" },
-      { title: "Indexable Reamer Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/94" }
-    ]
-  }
-};
-
-function detectGuhringFamilyAndFilters(message, history = []) {
-  const combined = normalizeText([
-    String(message || ""),
-    ...history.map((h) => String(h.content || ""))
-  ].join(" "));
-
-  let family = null;
-  let familyScore = -1;
-
-  for (const [key, rule] of Object.entries(GUHRING_RULES)) {
-    let score = 0;
-    for (const alias of rule.aliases) {
-      if (combined.includes(alias)) score += alias.split(" ").length;
-    }
-    if (score > familyScore) {
-      familyScore = score;
-      family = score > 0 ? key : null;
-    }
-  }
-
-  const matchedFilters = [];
-  if (family && GUHRING_RULES[family]) {
-    for (const [filterKey, terms] of Object.entries(GUHRING_RULES[family].exactFilters)) {
-      if (terms.some((term) => combined.includes(term))) {
-        matchedFilters.push(filterKey);
-      }
-    }
-  }
-
-  const { required, openPrefs } = detectRequiredFilters(message, history);
-
-    if (family === "drill") {
-    const hasSpecificDrillSubtype =
-      matchedFilters.includes("spot") ||
-      matchedFilters.includes("insert") ||
-      matchedFilters.includes("deepHole") ||
-      matchedFilters.includes("stub") ||
-      matchedFilters.includes("parabolic");
-
-    const hasAnyDrillLength =
-      required.length.length > 0 || matchedFilters.includes("jobber");
-
-    if (!hasSpecificDrillSubtype && !hasAnyDrillLength) {
-      matchedFilters.push("jobber");
-      if (!required.length.includes("jobber")) {
-        required.length.push("jobber");
-      }
-    }
-  }
-
-  if (family === "drill" && required.material.includes("stainless")) {
-    const hasCobaltLike =
-      required.substrate.includes("cobalt") ||
-      required.substrate.includes("hsco") ||
-      required.substrate.includes("hss-e") ||
-      required.substrate.includes("hsse") ||
-      required.substrate.includes("m35") ||
-      required.substrate.includes("m42");
-
-    const hasCarbideLike =
-      required.substrate.includes("solid carbide") ||
-      required.substrate.includes("carbide");
-
-    if (!hasCobaltLike && !hasCarbideLike && !openPrefs.substrateOpen) {
-      required.substrate.push("cobalt");
-    }
-  }
-
-  return {
-    family,
-    matchedFilters,
-    required,
-    openPrefs
-  };
-}
-
-function getGuhringRelatedGroupsFromRules(family, message = "") {
-  if (!family || !GUHRING_RULES[family]) return [];
-  const lower = normalizeText(message);
-
-  if (family === "drill") {
-    if (lower.includes("jobber") || lower.includes("standard length")) {
-      return [
-        { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" }
-      ];
-    }
-    if (lower.includes("cobalt") || lower.includes("hsco") || lower.includes("m35")) {
-      return [
-        { title: "HSS/Co Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6211" }
-      ];
-    }
-    if (lower.includes("spot") || lower.includes("center")) {
-      return [
-        { title: "Center and Spot Solid Drill Bits", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/162" }
-      ];
-    }
-    if (lower.includes("insert")) {
-      return [
-        { title: "Drill Inserts", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/150" }
-      ];
-    }
-    if (lower.includes("carbide")) {
-      return [
-        { title: "Solid Carbide Drills", url: "https://blue-prod-01.bessig.com/browse/catalogue/group/6210" }
-      ];
-    }
-  }
-
-  return GUHRING_RULES[family].relatedGroups || [];
-}
-
-function formatGuhringMatchInstructions(familyInfo) {
-  if (!familyInfo || !familyInfo.family) return "";
-
-  const familyLabel = familyInfo.family.replace(/_/g, " ").toUpperCase();
-  const matchedFiltersText = familyInfo.matchedFilters.length
-    ? familyInfo.matchedFilters.join(", ").toUpperCase()
-    : "NONE";
-
-  const requiredText = Object.entries(familyInfo.required)
-    .filter(([, arr]) => arr.length)
-    .map(([key, arr]) => `${key.toUpperCase()}: ${arr.join(", ").toUpperCase()}`)
-    .join("\n");
-
-  const openText = Object.entries(familyInfo.openPrefs)
-    .filter(([, val]) => val)
-    .map(([key]) => key.toUpperCase())
-    .join(", ");
-
-  return `
-GUHRING MATCHING MODE:
-- REQUIRED FAMILY: ${familyLabel}
-- MATCHED TERMINOLOGY FILTERS: ${matchedFiltersText}
-- HARD FILTERS:
-${requiredText || "NONE"}
-- OPEN FILTERS: ${openText || "NONE"}
-
-MATCH PRIORITY:
-1. Exact match within the required family and required filters
-2. Closest acceptable match within the same family when exact match is not available
-3. Ask one short follow-up question if no strong same-family match exists
-
-HARD RULES:
-- Never switch families
-- Never return a non-${familyLabel} product as the answer
-- Treat user-specified filters as required unless they explicitly said no preference
-- If a retrieved result conflicts with required filters, do not present it as exact
-- Do not relax required filters on your own
-
-Product output rules:
-
-- When returning an exact match, use this exact structure:
-
-EXACT MATCH
-
-Part #: [part number]
-Description: [tool description]
-
-Fit:
-[One short sentence explaining why it fits]
-
-- When returning a closest match, use this exact structure:
-
-CLOSEST MATCH
-
-Part #: [part number]
-Description: [tool description]
-
-Fit:
-[One short sentence explaining what matches and what is approximate]
-
-- Each section must be on its own line
-- Add a blank line between sections
-- Do NOT combine fields into one sentence
-- Do NOT use inline formatting like "Part : ... Description ..."
-- Keep it clean and spaced exactly like above
-- Use "PART #:" exactly
-- Keep descriptions in ALL CAPS
-- Be specific, not vague
-- Do not include pricing
-- Do not include long paragraphs
-- Do not include more than one product unless the user asks
-
-- Do not include pricing
-- Do not include long paragraphs
-- Do not include more than one product unless the user asks
-`;
-}
-
-function buildGuhringPromptAddOn(message, history = []) {
-  const familyInfo = detectGuhringFamilyAndFilters(message, history);
-
-  if (!familyInfo.family) {
-    return {
-      familyInfo,
-      promptText: ""
-    };
-  }
-
-  const followUps = getGuhringFollowUp(familyInfo.family);
-
-  const promptText = `
-The user is asking about a GUHRING ${familyInfo.family.replace(/_/g, " ")}.
-Continue refining the same tool request using conversation history.
-
-${formatGuhringMatchInstructions(familyInfo)}
-
-If no exact match is clearly supported by retrieved knowledge:
-- Return the closest match only if it still fits the family and most important filters
-- Otherwise ask one short follow-up question
-
-Preferred follow-up topics:
-${followUps.map((q) => `- ${q}`).join("\n")}
-`;
-
-  return {
-    familyInfo,
-    promptText
-  };
-}
-
-/* =========================
-   PRODUCT SEARCH HELPERS
-========================= */
-function isJunkTitle(title) {
-  const lower = String(title || "").toLowerCase();
-
-  return (
-    title.length < 4 ||
-    lower.includes("skip") ||
-    lower.includes("facebook") ||
-    lower.includes("twitter") ||
-    lower.includes("linkedin") ||
-    lower.includes("email") ||
-    lower.includes("search") ||
-    lower.includes("navigation") ||
-    lower.includes("footer") ||
-    lower.includes("shopping cart") ||
-    lower.includes("cart") ||
-    lower.includes("phone") ||
-    lower.includes("road cincinnati") ||
-    lower.includes("google") ||
-    lower.includes("all categories")
-  );
-}
-
-function looksProductIntent(message) {
-  const lower = String(message || "").toLowerCase();
-
-  const productKeywords = [
-    "drill", "drills", "drilling", "jobber",
-    "insert", "inserts",
-    "mill", "mills", "milling", "end mill", "end mills",
-    "tap", "taps",
-    "reamer", "reamers",
-    "thread mill", "thread mills",
-    "tool holder", "tool holders",
-    "collet", "collets",
-    "abrasive", "abrasives",
-    "fastener", "fasteners",
-    "saw", "saws",
-    "power tool", "power tools",
-    "hand tool", "hand tools",
-    "safety",
-    "paint",
-    "electrical",
-    "hydraulic",
-    "lubrication",
-    "janitorial",
-    "hvac",
-    "hardware",
-    "clamp",
-    "vise",
-    "inspection",
-    "gage",
-    "gauge",
-    "measuring"
-  ];
-
-  return productKeywords.some((k) => lower.includes(k));
-}
-
-function extractProductQuery(message) {
-  const lowerMessage = String(message || "").toLowerCase();
-
-  if (lowerMessage.includes("drill insert") || lowerMessage.includes("drill inserts")) return "drill inserts";
-  if (
-    lowerMessage.includes("solid carbide drill") ||
-    lowerMessage.includes("solid carbide drills") ||
-    lowerMessage.includes("carbide drill") ||
-    lowerMessage.includes("carbide drills")
-  ) return "solid carbide drills";
-  if (
-    lowerMessage.includes("hss drill") ||
-    lowerMessage.includes("hss drills") ||
-    lowerMessage.includes("co drill") ||
-    lowerMessage.includes("co drills") ||
-    lowerMessage.includes("jobber")
-  ) return "hss/co drills";
-  if (
-    lowerMessage.includes("center drill") ||
-    lowerMessage.includes("spot drill") ||
-    lowerMessage.includes("center and spot")
-  ) return "center and spot drills";
-
-  if (lowerMessage.includes("drill") || lowerMessage.includes("drilling")) return "drilling";
-  if (lowerMessage.includes("insert") || lowerMessage.includes("turning")) return "turning";
-  if (lowerMessage.includes("end mill")) return "milling";
-  if (lowerMessage.includes("mill") || lowerMessage.includes("milling")) return "milling";
-  if (lowerMessage.includes("tap") || lowerMessage.includes("thread")) return "threading";
-  if (lowerMessage.includes("ream")) return "reaming";
-  if (lowerMessage.includes("groov")) return "grooving";
-  if (lowerMessage.includes("part")) return "parting";
-  if (lowerMessage.includes("boring")) return "boring";
-
-  if (
-    lowerMessage.includes("tooling") ||
-    lowerMessage.includes("collet") ||
-    lowerMessage.includes("tool holder")
-  ) return "tooling";
-
-  if (
-    lowerMessage.includes("abrasive") ||
-    lowerMessage.includes("grinding wheel") ||
-    lowerMessage.includes("cutoff wheel") ||
-    lowerMessage.includes("flap wheel")
-  ) return "abrasives";
-
-  if (
-    lowerMessage.includes("fastener") ||
-    lowerMessage.includes("nut") ||
-    lowerMessage.includes("bolt") ||
-    lowerMessage.includes("screw") ||
-    lowerMessage.includes("washer") ||
-    lowerMessage.includes("anchor") ||
-    lowerMessage.includes("rivet") ||
-    lowerMessage.includes("threaded rod") ||
-    lowerMessage.includes("stud")
-  ) return "fasteners";
-
-  if (
-    lowerMessage.includes("hole saw") ||
-    lowerMessage.includes("bandsaw") ||
-    lowerMessage.includes("band saw") ||
-    lowerMessage.includes("circular saw") ||
-    lowerMessage.includes("reciprocating saw") ||
-    lowerMessage.includes("saws")
-  ) return "saws";
-
-  if (
-    lowerMessage.includes("power tool") ||
-    lowerMessage.includes("power drill") ||
-    lowerMessage.includes("router") ||
-    lowerMessage.includes("nibbler") ||
-    lowerMessage.includes("punch press")
-  ) return "power tools";
-
-  if (
-    lowerMessage.includes("hand tool") ||
-    lowerMessage.includes("wrench") ||
-    lowerMessage.includes("pliers") ||
-    lowerMessage.includes("screwdriver") ||
-    lowerMessage.includes("socket") ||
-    lowerMessage.includes("ratchet")
-  ) return "hand tools";
-
-  if (
-    lowerMessage.includes("gage") ||
-    lowerMessage.includes("gauge") ||
-    lowerMessage.includes("inspection") ||
-    lowerMessage.includes("measuring") ||
-    lowerMessage.includes("measurement") ||
-    lowerMessage.includes("calibration")
-  ) return "inspection";
-
-  if (
-    lowerMessage.includes("clamp") ||
-    lowerMessage.includes("vise") ||
-    lowerMessage.includes("workholding") ||
-    lowerMessage.includes("fixture") ||
-    lowerMessage.includes("lathe chuck")
-  ) return "clamping";
-
-  if (
-    lowerMessage.includes("adhesive") ||
-    lowerMessage.includes("sealant") ||
-    lowerMessage.includes("tape")
-  ) return "adhesives";
-
-  if (
-    lowerMessage.includes("paint") ||
-    lowerMessage.includes("spray paint") ||
-    lowerMessage.includes("primer") ||
-    lowerMessage.includes("coating")
-  ) return "paint";
-
-  if (
-    lowerMessage.includes("hardware") ||
-    lowerMessage.includes("hinge") ||
-    lowerMessage.includes("lock") ||
-    lowerMessage.includes("bracket")
-  ) return "hardware";
-
-  if (
-    lowerMessage.includes("ppe") ||
-    lowerMessage.includes("safety") ||
-    lowerMessage.includes("first aid") ||
-    lowerMessage.includes("fire protection")
-  ) return "safety";
-
-  if (
-    lowerMessage.includes("hvac") ||
-    lowerMessage.includes("air conditioner") ||
-    lowerMessage.includes("heater") ||
-    lowerMessage.includes("thermostat") ||
-    lowerMessage.includes("hvac filter") ||
-    lowerMessage.includes("hvac filters")
-  ) return "hvac";
-
-  if (
-    lowerMessage.includes("hydraulic") ||
-    lowerMessage.includes("hose") ||
-    lowerMessage.includes("pump") ||
-    lowerMessage.includes("accumulator")
-  ) return "hydraulics";
-
-  if (
-    lowerMessage.includes("janitorial") ||
-    lowerMessage.includes("sanitation") ||
-    lowerMessage.includes("cleaner") ||
-    lowerMessage.includes("trash bag") ||
-    lowerMessage.includes("trash bags")
-  ) return "janitorial";
-
-  if (
-    lowerMessage.includes("electrical") ||
-    lowerMessage.includes("lighting") ||
-    lowerMessage.includes("extension cord") ||
-    lowerMessage.includes("extension cords") ||
-    lowerMessage.includes("flashlight")
-  ) return "electrical";
-
-  if (
-    lowerMessage.includes("lubrication") ||
-    lowerMessage.includes("lubricant") ||
-    lowerMessage.includes("coolant") ||
-    lowerMessage.includes("grease")
-  ) return "lubrication";
-
-  if (
-    lowerMessage.includes("lathe") ||
-    lowerMessage.includes("milling machine") ||
-    lowerMessage.includes("drill press") ||
-    lowerMessage.includes("machinery")
-  ) return "machinery";
-
-  if (
-    lowerMessage.includes("shelving") ||
-    lowerMessage.includes("storage rack") ||
-    lowerMessage.includes("storage racks") ||
-    lowerMessage.includes("material handling") ||
-    lowerMessage.includes("work bench") ||
-    lowerMessage.includes("workbench")
-  ) return "storage";
-
-  if (lowerMessage.includes("sandvik")) return "sandvik";
-  if (lowerMessage.includes("iscar")) return "iscar";
-  if (lowerMessage.includes("kyocera")) return "kyocera";
-  if (lowerMessage.includes("sgs")) return "sgs";
-  if (lowerMessage.includes("guhring")) return "guhring";
-
-  return message;
-}
-
-async function searchProducts(query) {
-  try {
-    const url = `${BASE_URL}/showgroups.php?kw=${encodeURIComponent(query)}`;
-    const res = await axios.get(url, { timeout: 12000 });
-    const $ = cheerio.load(res.data);
-
-    const results = [];
-    const seen = new Set();
-
-    $("a").each((_, el) => {
-      const href = ($(el).attr("href") || "").trim();
-      const title = $(el).text().replace(/\s+/g, " ").trim();
-
-      if (!href || !title || isJunkTitle(title)) return;
-
-      const absolute = href.startsWith("http")
-        ? href
-        : `${BASE_URL}${href.startsWith("/") ? "" : "/"}${href}`;
-
-      const isRelevant =
-        absolute.includes("/catalogue/group/") ||
-        absolute.includes("/browse/catalogue/group/") ||
-        absolute.includes("/catalogue/product/") ||
-        absolute.includes("/browse/catalogue/product/") ||
-        absolute.includes("/showgroups.php") ||
-        absolute.includes("/search.php");
-
-      if (!isRelevant) return;
-      if (seen.has(absolute)) return;
-
-      seen.add(absolute);
-      results.push({ title, url: absolute });
-    });
-
-    return results.slice(0, 8);
-  } catch (err) {
-    console.log("Product search error:", err.message);
-    return [];
-  }
-}
-
-function formatRelatedOptionsHtml(productResults) {
-  if (!productResults.length) return "";
-
-  let html = "<br><br><b>Related options:</b><br>";
-
-  for (const p of productResults.slice(0, 5)) {
-    html += `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.title)}</a><br>`;
-  }
-
-  return html;
-}
-
-/* =========================
-   STATIC ROUTES
-========================= */
-app.get("/", (_req, res) => {
-  res.send("B.O.B. is running");
-});
-
-app.get("/health", (_req, res) => {
-  res.json({
-    ok: true,
-    kbChunks: kbChunks.length,
-    baseUrl: BASE_URL,
-    vectorStoreEnabled: !!VECTOR_STORE_ID,
-  });
-});
-
-app.get("/product-search", async (req, res) => {
-  try {
-    const query = String(req.query.q || "").trim();
-
-    if (!query) {
-      return res.json({ results: [] });
-    }
-
-    const results = await searchProducts(query);
-    return res.json({ results });
-  } catch (err) {
-    console.error("Product search route error:", err);
-    return res.status(500).json({ results: [] });
-  }
-});
-
-/* =========================
-   WIDGET
-========================= */
-app.get("/widget", (_req, res) => {
-  res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>B.O.B. Widget</title>
-  <style>
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      font-family: Arial, sans-serif;
-      background: transparent;
-      overflow: hidden;
-    }
-    #chat-container {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      background: #f7f9fc;
-      border-radius: 16px;
-      overflow: hidden;
-      border: 1px solid #d9e2f2;
-    }
-    #chat-header {
-      background: #1c50af;
-      color: #fff;
-      padding: 14px 16px;
-      font-weight: bold;
-      font-size: 15px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    #chat-messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      background: #f7f9fc;
-    }
-    .message-row {
-      display: flex;
-      width: 100%;
-    }
-    .message-row.user {
-      justify-content: flex-end;
-    }
-    .message-row.bot {
-      justify-content: flex-start;
-    }
-    .bubble {
-      max-width: 82%;
-      padding: 12px 14px;
-      border-radius: 16px;
-      font-size: 14px;
-      line-height: 1.45;
-      word-wrap: break-word;
-      white-space: normal;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    }
-    .user .bubble {
-      background: #1c50af;
-      color: #fff;
-      border-bottom-right-radius: 4px;
-    }
-    .bot .bubble {
-      background: #ffffff;
-      color: #1a1a1a;
-      border: 1px solid #d9e2f2;
-      border-bottom-left-radius: 4px;
-    }
-    .bubble a {
-      color: #1c50af;
-      text-decoration: underline;
-    }
-    #chat-input-area {
-      display: flex;
-      border-top: 1px solid #d9e2f2;
-      background: #fff;
-      padding: 0;
-      min-height: 58px;
-    }
-    #chat-input {
-      flex: 1;
-      border: none;
-      outline: none;
-      padding: 0 14px;
-      font-size: 14px;
-      background: #fff;
-      color: #222;
-    }
-    #send-btn {
-      border: none;
-      background: #1c50af;
-      color: #fff;
-      font-weight: bold;
-      font-size: 14px;
-      padding: 0 18px;
-      cursor: pointer;
-    }
-    #send-btn:disabled {
-      opacity: 0.65;
-      cursor: default;
-    }
-    .typing {
-      display: inline-flex;
-      gap: 4px;
-      align-items: center;
-      min-height: 18px;
-    }
-    .dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #888;
-      animation: bounce 1.2s infinite ease-in-out;
-    }
-    .dot:nth-child(2) { animation-delay: 0.15s; }
-    .dot:nth-child(3) { animation-delay: 0.3s; }
-
-    @keyframes bounce {
-      0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
-      40% { transform: scale(1); opacity: 1; }
-    }
-  </style>
-</head>
-<body>
-  <div id="chat-container">
-    <div id="chat-header">🤖 B.O.B. — Blue's Operation Bot</div>
-    <div id="chat-messages"></div>
-    <div id="chat-input-area">
-      <input id="chat-input" type="text" placeholder="Ask about tools, MRO, or Blue Ash..." />
-      <button id="send-btn">SEND</button>
-    </div>
-  </div>
-
-  <script>
-    const messagesEl = document.getElementById("chat-messages");
-    const inputEl = document.getElementById("chat-input");
-    const sendBtn = document.getElementById("send-btn");
-
-    // Chat history stored as separate user/assistant arrays to avoid double-push bug
-    const chatHistory = [];
-    const BOB_API = "https://bais-chatbot.onrender.com/chat";
-    const FETCH_TIMEOUT_MS = 60000; // 60s to allow for Render cold-start wake-up
-
-    const greetings = [
-      "Hi there! 👋 I'm B.O.B. How can I help today?",
-      "Hello! 👋 What can I help you find today?",
-      "Hey there! 👋 Need help with tooling or MRO?",
-      "Welcome! 👋 Ask me about products, tooling, or Blue Ash."
-    ];
-
-    function addMessage(html, who = "bot") {
-      const row = document.createElement("div");
-      row.className = "message-row " + who;
-
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.innerHTML = html;
-
-      row.appendChild(bubble);
-      messagesEl.appendChild(row);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
-
-    function showTyping() {
-      if (document.getElementById("typing-row")) return;
-      const row = document.createElement("div");
-      row.className = "message-row bot";
-      row.id = "typing-row";
-
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-
-      const typing = document.createElement("div");
-      typing.className = "typing";
-
-      for (let i = 0; i < 3; i++) {
-        const dot = document.createElement("span");
-        dot.className = "dot";
-        typing.appendChild(dot);
-      }
-
-      bubble.appendChild(typing);
-      row.appendChild(bubble);
-      messagesEl.appendChild(row);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
-
-    function hideTyping() {
-      const typingRow = document.getElementById("typing-row");
-      if (typingRow) typingRow.remove();
-    }
-
-    function setInputLocked(locked) {
-      inputEl.disabled = locked;
-      sendBtn.disabled = locked;
-      if (!locked) inputEl.focus();
-    }
-
-    function formatAnswer(answer) {
-      // The server appends raw HTML links (<a href="...">) for product results.
-      // We need to preserve those while escaping everything else.
-      // Strategy: extract links first, replace with placeholders, escape, restore.
-      var links = [];
-      var safe = answer.replace(/<a [^>]*>[\s\S]*?<\/a>/g, function(match) {
-        links.push(match);
-        return "\x00LINK" + (links.length - 1) + "\x00";
-      });
-      var bolds = [];
-      safe = safe.replace(/<b>[^<]*<\/b>/g, function(match) {
-        bolds.push(match);
-        return "\x00BOLD" + (bolds.length - 1) + "\x00";
-      });
-
-      // Escape remaining HTML characters
-      safe = safe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-      // Apply formatting
-      safe = safe
-        .replace(/\n/g, "<br>")
-        .replace(/EXACT MATCH/g, "<strong>EXACT MATCH</strong>")
-        .replace(/CLOSEST MATCH/g, "<strong>CLOSEST MATCH</strong>")
-        .replace(/Part #:/g, "<strong>Part #:</strong>")
-        .replace(/Description:/g, "<strong>Description:</strong>")
-        .replace(/Fit:/g, "<strong>Fit:</strong>")
-        .replace(/Related:/g, "<strong>Related:</strong>");
-
-      // Restore preserved HTML
-      safe = safe.replace(/\x00BOLD(\d+)\x00/g, function(_, i) { return bolds[+i]; });
-      safe = safe.replace(/\x00LINK(\d+)\x00/g, function(_, i) { return links[+i]; });
-
-      return safe;
-    }
-
-    async function sendMessage() {
-      const text = inputEl.value.trim();
-      if (!text) return;
-
-      addMessage(text.replace(/</g, "&lt;").replace(/>/g, "&gt;"), "user");
-      inputEl.value = "";
-      setInputLocked(true);
-      showTyping();
-
-      // Add user message to history BEFORE the fetch
-      chatHistory.push({ role: "user", content: text });
-      if (chatHistory.length > 20) chatHistory.splice(0, 2); // trim oldest pair
-
-      // Warn user if it seems to be taking a while (Render cold-start)
-      const slowWarningTimer = setTimeout(() => {
-        const typingRow = document.getElementById("typing-row");
-        if (typingRow) {
-          const bubble = typingRow.querySelector(".bubble");
-          if (bubble) bubble.innerHTML = '<span style="font-size:12px;color:#888;">⏳ Waking up... just a moment...</span>';
-        }
-      }, 8000);
-
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-        const res = await fetch(BOB_API, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text, history: chatHistory }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        clearTimeout(slowWarningTimer);
-        hideTyping();
-
-        if (!res.ok) {
-          throw new Error("Server returned " + res.status);
-        }
-
-        const data = await res.json();
-        const answer = data.answer || "Sorry, I ran into an issue.";
-
-        addMessage(formatAnswer(answer), "bot");
-
-        // Add assistant reply to history AFTER the fetch
-        chatHistory.push({ role: "assistant", content: answer });
-        if (chatHistory.length > 20) chatHistory.splice(0, 2);
-
-      } catch (err) {
-        clearTimeout(slowWarningTimer);
-        hideTyping();
-        if (err.name === "AbortError") {
-          addMessage("⏱️ That took too long — please try again in a moment.", "bot");
-        } else {
-          addMessage("Sorry — I had trouble connecting just now. Please try again.", "bot");
-        }
-        // Remove the user message we optimistically added if the request failed
-        if (chatHistory.length && chatHistory[chatHistory.length - 1].role === "user") {
-          chatHistory.pop();
-        }
-      }
-
-      setInputLocked(false);
-    }
-
-    sendBtn.addEventListener("click", sendMessage);
-    inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) sendMessage();
-    });
-
-    addMessage(greetings[Math.floor(Math.random() * greetings.length)], "bot");
-  </script>
-</body>
-</html>`);
-});
-
-/* =========================
-   CHAT ROUTE
-========================= */
+/* ─────────────────────────────────────────
+   ROUTES
+───────────────────────────────────────── */
+app.get("/", (_req, res) => res.send("B.O.B. is running ✅"));
+
+app.get("/health", (_req, res) => res.json({
+  ok: true,
+  model: OPENAI_MODEL,
+  vectorStore: VECTOR_STORE_ID || "not set",
+  baseUrl: BASE_URL,
+}));
+
+/* ─────────────────────────────────────────
+   CHAT
+───────────────────────────────────────── */
 app.post("/chat", async (req, res) => {
   try {
     const message = String(req.body.message || "").trim();
     const history = sanitizeHistory(req.body.history);
 
     if (!message) {
-      return res.status(400).json({
-        answer: "Please enter a message.",
-      });
+      return res.status(400).json({ answer: "Please send a message." });
     }
 
-    const lowerMessage = message.toLowerCase();
-    const vendor = detectVendor(message, history);
-const guhringMode = buildGuhringPromptAddOn(message, history);
-const familyInfo = guhringMode.familyInfo;
-const guhringType = familyInfo.family;
-
-    /* =========================
-       SIMPLE RESPONSES (emoji restored)
-    ========================= */
-    if (
-      lowerMessage.includes("who built you") ||
-      lowerMessage.includes("who made you") ||
-      lowerMessage.includes("who created you")
-    ) {
-      return res.json({
-        answer:
-          "I was built for Blue Ash Industrial Supply to help with tooling, product questions, and general company information. 🤖",
-      });
-    }
-
-    if (
-      lowerMessage === "hi" ||
-      lowerMessage === "hello" ||
-      lowerMessage === "hey"
-    ) {
-      const quickGreetings = [
-        "Hi there! 👋 How can I help?",
-        "Hello! 👋 What can I help you find today?",
-        "Hey there! 👋 Need help with tooling or MRO?",
-      ];
-
-      return res.json({
-        answer:
-          quickGreetings[Math.floor(Math.random() * quickGreetings.length)],
-      });
-    }
-
-    /* =========================
-       RELATED PRODUCTS (FIXED)
-    ========================= */
-    let productResults = [];
-
-if (vendor === "guhring" && guhringType) {
-  productResults = getGuhringRelatedGroupsFromRules(
-    guhringType,
-    [message, ...history.map((h) => h.content || "")].join(" ")
-  );
-} else if (looksProductIntent(message)) {
-  const query = extractProductQuery(message);
-  productResults = await searchProducts(query);
-}
-
-    const relatedOptionsHtml = formatRelatedOptionsHtml(productResults);
-
-    /* =========================
-       CONTEXT
-    ========================= */
-    const context = getContext(message);
-
-    /* =========================
-       GUHRING GUIDANCE
-    ========================= */
-    let guhringGuidance = "";
-
-if (vendor === "guhring" && guhringType) {
-  guhringGuidance = guhringMode.promptText || "";
-}
-
-    const systemPrompt = `
-You are B.O.B. for Blue Ash Industrial Supply.
-
-Tone:
-- Friendly, natural, conversational
-- Use emojis lightly where appropriate, especially greetings
-- Keep answers concise and practical
-
-Behavior:
-- ALWAYS use prior conversation context
-- If the user replies with short answers like "steel", "1/4", "cobalt", "jobber", "standard length", or "no coating", continue the previous request
-- NEVER restart the conversation if a tool was already identified
-- DO NOT ask what they are looking for again if already known
-- Never switch tool families unless the user clearly changes the request
-- Treat user-specified requirements as hard filters unless the user explicitly says no preference
-- If a likely exact product is supported, return it cleanly and briefly
-- If no exact product is supported, return the closest match only if it still fits the correct family and required filters
-- If neither exact nor close fit is clear, ask one short follow-up question
-
-Product output rules:
-
-- When returning an exact match, use this exact structure:
-
-EXACT MATCH
-
-Part #: [part number]
-Description: [tool description]
-
-Fit:
-[One short sentence explaining why it fits]
-
-- When returning a closest match, use this exact structure:
-
-CLOSEST MATCH
-
-Part #: [part number]
-Description: [tool description]
-
-Fit:
-[One short sentence explaining what matches and what is approximate]
-
-- Each section must be on its own line
-- Add a blank line between sections
-- Do NOT combine fields into one sentence
-- Do NOT use inline formatting like "Part : ... Description ..."
-- Keep it clean and spaced exactly like above
-Focus:
-- Provide practical tooling recommendations
-- Keep answers clear, short, and useful
-
-${guhringGuidance}
-`;
-
-    const inputMessages = [
-      { role: "system", content: systemPrompt },
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
       ...history,
-      {
-        role: "user",
-        content: `
-USER MESSAGE:
-${message}
+      { role: "user", content: message },
+    ];
 
-WEBSITE CONTEXT:
-${context || "none"}
-
-RELATED PRODUCTS:
-${
-  productResults.length
-    ? productResults.map((p) => `${p.title} - ${p.url}`).join("\n")
-    : "none"
-}
-`,
-      },
-    ];    
-	  
-	  const responseConfig = {
+    const config = {
       model: OPENAI_MODEL,
-      input: inputMessages,
+      input: messages,
+      max_output_tokens: 512,
     };
 
     if (VECTOR_STORE_ID) {
-      responseConfig.tools = [
-        {
-          type: "file_search",
-          vector_store_ids: [VECTOR_STORE_ID],
-        },
-      ];
+      config.tools = [{
+        type: "file_search",
+        vector_store_ids: [VECTOR_STORE_ID],
+      }];
     }
 
-    const response = await client.responses.create(responseConfig);
-
-    let answer =
-      response.output_text ||
-      "Sorry, I couldn’t generate a response right now.";
-
-    answer = cleanPlainText(answer);
-
-    if (relatedOptionsHtml) {
-      answer += relatedOptionsHtml;
-    }
+    const response = await openai.responses.create(config);
+    const answer = (response.output_text || "Sorry, I couldn't generate a response right now.").trim();
 
     return res.json({ answer });
-  } catch (err) {
-    console.error("CHAT ERROR:", err);
 
-    return res.status(500).json({
-      answer: "Sorry, something went wrong while processing that request.",
-    });
+  } catch (err) {
+    console.error("CHAT ERROR:", err?.message || err);
+    return res.status(500).json({ answer: "Sorry, something went wrong. Please try again." });
   }
 });
 
-/* =========================
-   STARTUP
-========================= */
-async function startServer() {
-  try {
-    console.log("STARTING B.O.B...");
+/* ─────────────────────────────────────────
+   WIDGET
+───────────────────────────────────────── */
+app.get("/widget", (_req, res) => {
+  res.setHeader("Content-Type", "text/html");
+  res.send(WIDGET_HTML);
+});
 
-    app.listen(port, async () => {
-      console.log(`B.O.B. RUNNING ON PORT ${port}`);
-      console.log(`BASE URL: ${BASE_URL}`);
-      console.log(`VECTOR STORE: ${VECTOR_STORE_ID || "NOT SET"}`);
-      console.log(`MODEL: ${OPENAI_MODEL}`);
+/* ─────────────────────────────────────────
+   START
+───────────────────────────────────────── */
+app.listen(port, () => {
+  console.log("B.O.B. running on port", port);
+  console.log("Model:", OPENAI_MODEL);
+  console.log("Vector store:", VECTOR_STORE_ID || "NOT SET");
+});
 
-      try {
-        await buildKnowledgeBase();
-        console.log("KNOWLEDGE BASE READY");
-      } catch (err) {
-        console.error("KNOWLEDGE BASE ERROR:", err.message);
-      }
-    });
-  } catch (err) {
-    console.error("STARTUP ERROR:", err);
-    process.exit(1);
+/* ─────────────────────────────────────────
+   WIDGET HTML
+───────────────────────────────────────── */
+const WIDGET_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>B.O.B.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0f1117;
+      --surface:     #1a1d27;
+      --surface2:    #22263a;
+      --border:      #2e3250;
+      --accent:      #4f8ef7;
+      --accent-dim:  #1e3a6e;
+      --text:        #e8eaf6;
+      --text-muted:  #6b7280;
+      --text-dim:    #9ca3af;
+      --user-bg:     #4f8ef7;
+      --user-text:   #ffffff;
+      --bot-bg:      #1a1d27;
+      --bot-text:    #e8eaf6;
+      --radius:      14px;
+      --font:        'DM Sans', sans-serif;
+      --mono:        'DM Mono', monospace;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      font-family: var(--font);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    #shell {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+    }
+
+    /* ── Header ── */
+    #header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    #avatar {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    #header-text { display: flex; flex-direction: column; gap: 1px; }
+
+    #header-name {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
+    #header-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      letter-spacing: 0.04em;
+    }
+
+    #status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #22c55e;
+      margin-left: auto;
+      box-shadow: 0 0 6px #22c55e88;
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ── Messages ── */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .row.user { justify-content: flex-end; }
+    .row.bot  { justify-content: flex-start; }
+
+    .bot-icon {
+      width: 26px; height: 26px;
+      border-radius: 8px;
+      background: var(--accent-dim);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+      margin-bottom: 2px;
+    }
+
+    .bubble {
+      max-width: 78%;
+      padding: 11px 14px;
+      border-radius: var(--radius);
+      font-size: 13.5px;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+
+    .row.user .bubble {
+      background: var(--user-bg);
+      color: var(--user-text);
+      border-bottom-right-radius: 4px;
+    }
+
+    .row.bot .bubble {
+      background: var(--bot-bg);
+      color: var(--bot-text);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+
+    .bubble a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-decoration-color: var(--accent-dim);
+    }
+
+    .bubble a:hover { text-decoration-color: var(--accent); }
+
+    /* Typing dots */
+    .typing-dots {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      padding: 4px 2px;
+    }
+
+    .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      animation: bop 1.3s ease-in-out infinite;
+    }
+
+    .dot:nth-child(2) { animation-delay: 0.18s; }
+    .dot:nth-child(3) { animation-delay: 0.36s; }
+
+    @keyframes bop {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      40%            { transform: translateY(-5px); opacity: 1; }
+    }
+
+    /* ── Input bar ── */
+    #input-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    #input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-family: var(--font);
+      font-size: 13.5px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+      min-height: 42px;
+    }
+
+    #input::placeholder { color: var(--text-muted); }
+
+    #input:focus {
+      border-color: var(--accent);
+    }
+
+    #send {
+      width: 42px; height: 42px;
+      border-radius: 10px;
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    #send:hover:not(:disabled) { background: #6ba3ff; }
+    #send:active:not(:disabled) { transform: scale(0.94); }
+    #send:disabled { opacity: 0.4; cursor: default; }
+
+    #send svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* fade-in for new messages */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .row { animation: fadeUp 0.2s ease; }
+  </style>
+</head>
+<body>
+<div id="shell">
+  <div id="header">
+    <div id="avatar">🤖</div>
+    <div id="header-text">
+      <span id="header-name">B.O.B.</span>
+      <span id="header-sub">Blue's Operation Bot · BAIS</span>
+    </div>
+    <div id="status-dot"></div>
+  </div>
+
+  <div id="messages"></div>
+
+  <div id="input-bar">
+    <input id="input" type="text" placeholder="Ask about tools, products, or Blue Ash..." autocomplete="off" />
+    <button id="send" aria-label="Send">
+      <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  var API = "https://bais-chatbot.onrender.com/chat";
+  var history = [];
+
+  var msgs   = document.getElementById("messages");
+  var input  = document.getElementById("input");
+  var sendBtn = document.getElementById("send");
+
+  var greetings = [
+    "Hey! 👋 I'm B.O.B. — Blue Ash Industrial Supply's assistant. What can I help you find?",
+    "Hi there! 👋 I'm B.O.B. Ask me about products, tooling, or anything about Blue Ash.",
+    "Hello! I'm B.O.B. 🤖 Ready to help with tools, MRO, or questions about Blue Ash Industrial."
+  ];
+
+  function scrollBottom() {
+    msgs.scrollTop = msgs.scrollHeight;
   }
-}
 
-startServer();
+  function addMessage(text, who) {
+    var row = document.createElement("div");
+    row.className = "row " + who;
+
+    if (who === "bot") {
+      var icon = document.createElement("div");
+      icon.className = "bot-icon";
+      icon.textContent = "🤖";
+      row.appendChild(icon);
+    }
+
+    var bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    // Safe text rendering — convert newlines to <br>, linkify URLs
+    var safe = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+
+    // Linkify bare URLs
+    safe = safe.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
+    });
+
+    bubble.innerHTML = safe;
+    row.appendChild(bubble);
+    msgs.appendChild(row);
+    scrollBottom();
+    return row;
+  }
+
+  function showTyping() {
+    var row = document.createElement("div");
+    row.className = "row bot";
+    row.id = "typing";
+
+    var icon = document.createElement("div");
+    icon.className = "bot-icon";
+    icon.textContent = "🤖";
+    row.appendChild(icon);
+
+    var bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    var dots = document.createElement("div");
+    dots.className = "typing-dots";
+    for (var i = 0; i < 3; i++) {
+      var d = document.createElement("span");
+      d.className = "dot";
+      dots.appendChild(d);
+    }
+
+    bubble.appendChild(dots);
+    row.appendChild(bubble);
+    msgs.appendChild(row);
+    scrollBottom();
+  }
+
+  function hideTyping() {
+    var t = document.getElementById("typing");
+    if (t) t.remove();
+  }
+
+  function lock(val) {
+    input.disabled = val;
+    sendBtn.disabled = val;
+  }
+
+  async function send() {
+    var text = input.value.trim();
+    if (!text) return;
+
+    addMessage(text, "user");
+    input.value = "";
+    lock(true);
+    showTyping();
+
+    history.push({ role: "user", content: text });
+
+    // Cold-start nudge after 9s
+    var nudge = setTimeout(function() {
+      var t = document.getElementById("typing");
+      if (t) {
+        var b = t.querySelector(".bubble");
+        if (b) b.innerHTML = '<span style="font-size:12px;color:#6b7280">⏳ Waking up, one moment...</span>';
+      }
+    }, 9000);
+
+    try {
+      var controller = new AbortController();
+      var timeout = setTimeout(function() { controller.abort(); }, 60000);
+
+      var res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, history: history }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+      clearTimeout(nudge);
+      hideTyping();
+
+      var data = await res.json();
+      var answer = (data.answer || "Sorry, I ran into an issue.").trim();
+
+      addMessage(answer, "bot");
+      history.push({ role: "assistant", content: answer });
+
+      // Keep history trimmed to last 20 messages (10 pairs)
+      if (history.length > 20) history = history.slice(history.length - 20);
+
+    } catch (err) {
+      clearTimeout(nudge);
+      hideTyping();
+      if (err.name === "AbortError") {
+        addMessage("⏱️ That took too long — Render may be waking up. Try again in a moment.", "bot");
+      } else {
+        addMessage("Connection error. Please try again.", "bot");
+      }
+      // Roll back the user message from history on failure
+      if (history.length && history[history.length - 1].role === "user") {
+        history.pop();
+      }
+    }
+
+    lock(false);
+    input.focus();
+  }
+
+  sendBtn.addEventListener("click", send);
+  input.addEventListener("keydown", function(e) {
+    if (e.key === "Enter" && !e.shiftKey) send();
+  });
+
+  // Greeting on load
+  addMessage(greetings[Math.floor(Math.random() * greetings.length)], "bot");
+</script>
+</body>
+</html>`;
