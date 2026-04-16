@@ -1210,22 +1210,38 @@ app.get("/widget", (_req, res) => {
     }
 
     function formatAnswer(answer) {
-      // The answer may contain raw <a href="..."> links from the server (formatRelatedOptionsHtml).
-      // Split on those so we only HTML-escape the text portions, not the links.
-      const parts = answer.split(/(<a\s[^>]*>.*?<\/a>|<br>|<b>[^<]*<\/b>)/gi);
-      const escaped = parts.map((part) => {
-        if (/^<a\s/i.test(part) || /^<br>$/i.test(part) || /^<b>/i.test(part)) return part;
-        return part.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      }).join("");
+      // The server appends raw HTML links (<a href="...">) for product results.
+      // We need to preserve those while escaping everything else.
+      // Strategy: extract links first, replace with placeholders, escape, restore.
+      var links = [];
+      var safe = answer.replace(/<a [^>]*>[\s\S]*?<\/a>/g, function(match) {
+        links.push(match);
+        return "\x00LINK" + (links.length - 1) + "\x00";
+      });
+      var bolds = [];
+      safe = safe.replace(/<b>[^<]*<\/b>/g, function(match) {
+        bolds.push(match);
+        return "\x00BOLD" + (bolds.length - 1) + "\x00";
+      });
 
-      return escaped
+      // Escape remaining HTML characters
+      safe = safe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      // Apply formatting
+      safe = safe
         .replace(/\n/g, "<br>")
         .replace(/EXACT MATCH/g, "<strong>EXACT MATCH</strong>")
         .replace(/CLOSEST MATCH/g, "<strong>CLOSEST MATCH</strong>")
-        .replace(/Part #:/gi, "<strong>Part #:</strong>")
-        .replace(/Description:/gi, "<strong>Description:</strong>")
-        .replace(/Fit:/gi, "<strong>Fit:</strong>")
-        .replace(/Related:/gi, "<strong>Related:</strong>");
+        .replace(/Part #:/g, "<strong>Part #:</strong>")
+        .replace(/Description:/g, "<strong>Description:</strong>")
+        .replace(/Fit:/g, "<strong>Fit:</strong>")
+        .replace(/Related:/g, "<strong>Related:</strong>");
+
+      // Restore preserved HTML
+      safe = safe.replace(/\x00BOLD(\d+)\x00/g, function(_, i) { return bolds[+i]; });
+      safe = safe.replace(/\x00LINK(\d+)\x00/g, function(_, i) { return links[+i]; });
+
+      return safe;
     }
 
     async function sendMessage() {
