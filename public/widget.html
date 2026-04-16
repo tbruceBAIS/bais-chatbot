@@ -224,6 +224,28 @@
   var input       = document.getElementById("input");
   var sendBtn     = document.getElementById("send");
 
+  // ── Open/Closed status ──
+  function updateStatus() {
+    var now = new Date();
+    // Convert to Eastern Time
+    var et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    var day = et.getDay(); // 0=Sun, 6=Sat
+    var hour = et.getHours();
+    var isOpen = day >= 1 && day <= 5 && hour >= 8 && hour < 17;
+    var dot = document.getElementById("status-dot");
+    var label = document.getElementById("status-label");
+    if (isOpen) {
+      dot.style.background = "#4ade80";
+      dot.style.boxShadow = "0 0 6px #4ade8088";
+      label.textContent = "Open";
+    } else {
+      dot.style.background = "#f87171";
+      dot.style.boxShadow = "0 0 6px #f8717188";
+      label.textContent = "Closed";
+    }
+  }
+  updateStatus();
+
   var greetings = [
     "Hey there! I'm B.O.B., your Blue Ash Industrial Supply assistant. What can I help you find today? 👋",
     "Hi! I'm B.O.B. — here to help with products, tooling, or anything about Blue Ash Industrial. 👋",
@@ -345,6 +367,10 @@
     showTyping();
     chatHistory.push({ role: "user", content: text });
 
+    // Remove quick reply buttons on first message
+    var qr = document.getElementById("quick-replies");
+    if (qr) qr.remove();
+
     var nudge = setTimeout(function() {
       var t = document.getElementById("typing");
       if (t) {
@@ -394,6 +420,53 @@
   });
 
   addMessage(greetings[Math.floor(Math.random() * greetings.length)], "bot");
+
+  // Quick reply buttons
+  var quickReplies = [
+    "Where are you located?",
+    "Tell me about vending solutions",
+    "I need help finding a tool"
+  ];
+
+  var qRow = document.createElement("div");
+  qRow.id = "quick-replies";
+  qRow.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 4px 35px;animation:fadeUp 0.2s ease;";
+
+  quickReplies.forEach(function(label) {
+    var btn = document.createElement("button");
+    btn.textContent = label;
+    btn.style.cssText = [
+      "background:#f0f5ff",
+      "color:#1e50b3",
+      "border:1px solid #dce8ff",
+      "border-radius:16px",
+      "padding:5px 12px",
+      "font-size:12px",
+      "font-weight:600",
+      "cursor:pointer",
+      "font-family:inherit",
+      "transition:background 0.15s,color 0.15s"
+    ].join(";");
+    btn.addEventListener("mouseenter", function() {
+      btn.style.background = "#1c3f8f";
+      btn.style.color = "#fff";
+      btn.style.borderColor = "#1c3f8f";
+    });
+    btn.addEventListener("mouseleave", function() {
+      btn.style.background = "#f0f5ff";
+      btn.style.color = "#1e50b3";
+      btn.style.borderColor = "#dce8ff";
+    });
+    btn.addEventListener("click", function() {
+      qRow.remove();
+      input.value = label;
+      send();
+    });
+    qRow.appendChild(btn);
+  });
+
+  msgs.appendChild(qRow);
+  msgs.scrollTop = msgs.scrollHeight;
 </script>
 </body>
 </html>
