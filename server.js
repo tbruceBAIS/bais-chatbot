@@ -79,6 +79,10 @@ app.get("/health", function(_req, res) {
   res.json({ ok: true, model: OPENAI_MODEL, vectorStore: VECTOR_STORE_ID, baseUrl: BASE_URL });
 });
 
+app.get("/widget", function(_req, res) {
+  res.sendFile(path.join(__dirname, "public", "widget.html"));
+});
+
 app.post("/chat", async function(req, res) {
   try {
     const message = String(req.body.message || "").trim();
