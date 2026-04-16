@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>B.O.B.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0f1117;
+      --surface:    #1a1d27;
+      --surface2:   #22263a;
+      --border:     #2e3250;
+      --accent:     #4f8ef7;
+      --accent-dim: #1e3a6e;
+      --text:       #e8eaf6;
+      --muted:      #6b7280;
+      --radius:     14px;
+      --font:       'DM Sans', sans-serif;
+      --mono:       'DM Mono', monospace;
+    }
+
+    html, body { width: 100%; height: 100%; background: var(--bg); font-family: var(--font); color: var(--text); overflow: hidden; }
+
+    #shell { display: flex; flex-direction: column; width: 100%; height: 100%; }
+
+    #header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+
+    #avatar { width: 36px; height: 36px; border-radius: 10px; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+
+    #header-text { display: flex; flex-direction: column; gap: 1px; }
+    #header-name { font-size: 14px; font-weight: 600; }
+    #header-sub  { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+    #status-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; margin-left: auto; box-shadow: 0 0 6px #22c55e88; animation: pulse 2.5s ease-in-out infinite; }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    #messages { flex: 1; overflow-y: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .row { display: flex; align-items: flex-end; gap: 8px; animation: fadeUp 0.2s ease; }
+    .row.user { justify-content: flex-end; }
+    .row.bot  { justify-content: flex-start; }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .bot-icon { width: 26px; height: 26px; border-radius: 8px; background: var(--accent-dim); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; margin-bottom: 2px; }
+
+    .bubble { max-width: 78%; padding: 11px 14px; border-radius: var(--radius); font-size: 13.5px; line-height: 1.55; word-break: break-word; }
+    .row.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .row.bot  .bubble { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+
+    .typing-dots { display: flex; gap: 5px; align-items: center; padding: 4px 2px; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: bop 1.3s ease-in-out infinite; }
+    .dot:nth-child(2) { animation-delay: 0.18s; }
+    .dot:nth-child(3) { animation-delay: 0.36s; }
+    @keyframes bop { 0%, 80%, 100% { transform: translateY(0); opacity: 0.4; } 40% { transform: translateY(-5px); opacity: 1; } }
+
+    #input-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+
+    #input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-family: var(--font); font-size: 13.5px; color: var(--text); outline: none; transition: border-color 0.15s; min-height: 42px; }
+    #input::placeholder { color: var(--muted); }
+    #input:focus { border-color: var(--accent); }
+
+    #send { width: 42px; height: 42px; border-radius: 10px; background: var(--accent); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s, transform 0.1s; }
+    #send:hover:not(:disabled) { background: #6ba3ff; }
+    #send:active:not(:disabled) { transform: scale(0.94); }
+    #send:disabled { opacity: 0.4; cursor: default; }
+    #send svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+</head>
+<body>
+<div id="shell">
+  <div id="header">
+    <div id="avatar">🤖</div>
+    <div id="header-text">
+      <span id="header-name">B.O.B.</span>
+      <span id="header-sub">Blue's Operation Bot · BAIS</span>
+    </div>
+    <div id="status-dot"></div>
+  </div>
+  <div id="messages"></div>
+  <div id="input-bar">
+    <input id="input" type="text" placeholder="Ask about tools, products, or Blue Ash..." autocomplete="off" />
+    <button id="send" aria-label="Send">
+      <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  var API     = "https://bais-chatbot.onrender.com/chat";
+  var history = [];
+  var msgs    = document.getElementById("messages");
+  var input   = document.getElementById("input");
+  var sendBtn = document.getElementById("send");
+
+  var greetings = [
+    "Hey! I'm B.O.B. — Blue Ash Industrial Supply's assistant. What can I help you find? 👋",
+    "Hi there! I'm B.O.B. Ask me about products, tooling, or anything about Blue Ash. 👋",
+    "Hello! I'm B.O.B. Ready to help with tools, MRO, or questions about Blue Ash Industrial. 🤖"
+  ];
+
+  function scrollBottom() {
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function addMessage(text, who) {
+    var row = document.createElement("div");
+    row.className = "row " + who;
+
+    if (who === "bot") {
+      var icon = document.createElement("div");
+      icon.className = "bot-icon";
+      icon.textContent = "🤖";
+      row.appendChild(icon);
+    }
+
+    var bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    // Build message using DOM text nodes — NO regex, NO innerHTML string manipulation
+    var lines = text.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      if (i > 0) bubble.appendChild(document.createElement("br"));
+      bubble.appendChild(document.createTextNode(lines[i]));
+    }
+
+    row.appendChild(bubble);
+    msgs.appendChild(row);
+    scrollBottom();
+  }
+
+  function showTyping() {
+    if (document.getElementById("typing")) return;
+    var row = document.createElement("div");
+    row.className = "row bot";
+    row.id = "typing";
+
+    var icon = document.createElement("div");
+    icon.className = "bot-icon";
+    icon.textContent = "🤖";
+    row.appendChild(icon);
+
+    var bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    var dots = document.createElement("div");
+    dots.className = "typing-dots";
+    for (var i = 0; i < 3; i++) {
+      var d = document.createElement("span");
+      d.className = "dot";
+      dots.appendChild(d);
+    }
+    bubble.appendChild(dots);
+    row.appendChild(bubble);
+    msgs.appendChild(row);
+    scrollBottom();
+  }
+
+  function hideTyping() {
+    var t = document.getElementById("typing");
+    if (t) t.remove();
+  }
+
+  function lock(val) {
+    input.disabled = val;
+    sendBtn.disabled = val;
+  }
+
+  async function send() {
+    var text = input.value.trim();
+    if (!text) return;
+
+    addMessage(text, "user");
+    input.value = "";
+    lock(true);
+    showTyping();
+    history.push({ role: "user", content: text });
+
+    var nudge = setTimeout(function() {
+      var t = document.getElementById("typing");
+      if (t) {
+        var b = t.querySelector(".bubble");
+        if (b) {
+          b.textContent = "";
+          b.appendChild(document.createTextNode("Waking up, one moment..."));
+        }
+      }
+    }, 9000);
+
+    try {
+      var controller = new AbortController();
+      var tout = setTimeout(function() { controller.abort(); }, 60000);
+
+      var res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, history: history }),
+        signal: controller.signal
+      });
+
+      clearTimeout(tout);
+      clearTimeout(nudge);
+      hideTyping();
+
+      var data = await res.json();
+      var answer = data.answer ? data.answer.trim() : "Sorry, I ran into an issue.";
+
+      addMessage(answer, "bot");
+      history.push({ role: "assistant", content: answer });
+      if (history.length > 20) history = history.slice(history.length - 20);
+
+    } catch (err) {
+      clearTimeout(nudge);
+      hideTyping();
+      var msg = (err.name === "AbortError")
+        ? "That took too long. Render may be waking up — try again in a moment."
+        : "Connection error. Please try again.";
+      addMessage(msg, "bot");
+      if (history.length && history[history.length - 1].role === "user") history.pop();
+    }
+
+    lock(false);
+    input.focus();
+  }
+
+  sendBtn.addEventListener("click", send);
+  input.addEventListener("keydown", function(e) {
+    if (e.key === "Enter" && !e.shiftKey) send();
+  });
+
+  addMessage(greetings[Math.floor(Math.random() * greetings.length)], "bot");
+</script>
+</body>
+</html>
